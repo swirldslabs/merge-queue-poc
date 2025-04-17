@@ -1,0 +1,52 @@
+##
+# Copyright (C) 2023 Hedera Hashgraph, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+##
+
+name: "PR Formatting"
+on:
+  workflow_dispatch:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - edited
+      - synchronize
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: pr-formatting-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  title-check:
+    name: Title Check
+    runs-on: solo-linux-medium
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        with:
+          egress-policy: audit
+
+      - name: Check PR Title
+        uses: step-security/conventional-pr-title-action@8a8989588c2547f23167c4c42f0fb2356479e81b # v3.2.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

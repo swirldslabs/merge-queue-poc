@@ -1,0 +1,89 @@
+log:
+  fileLogging: true
+  level: Info
+  directory: test_data/.cheetah/logs
+  fileName: cheetah.log
+  maxSize: 1
+  maxBackups: 10
+  maxAge: 30
+pipelines:
+  - name: record-stream-uploader
+    scanner:
+      path: ./test_data/hgcapp/recordStreams
+      pattern: ".rcd_sig"
+      recursive: true
+      interval: 100ms
+    processor: # each processor can upload to multiple storages concurrently or sequentially
+      maxProcessors: 10
+      retry:
+        limit: 5
+        backoff: 1s
+        interval: 1s
+      storage:
+        s3:
+          enabled: true
+          bucket: record-streams
+          region: us-east-1
+          prefix: cheetah/streams
+          endpoint: https://s3.amazonaws.com
+          accessKey: S3_ACCESS_KEY # use this env variable
+          secretKey: S3_SECRET_KEY # use this env variable
+        gcs:
+          enabled: true
+          bucket: record-streams
+          region: us-east-1
+          prefix: cheetah/streams
+          endpoint: https://storage.googleapis.com
+          accessKey: GCS_ACCESS_KEY # use this env variable
+          secretKey: GCS_SECRET_KEY # use this env variable
+        localDir: # not needed, but can be used to store the file locally if needed
+          enabled: true
+          path: test_data/backup/recordStreams
+          mode: 0755
+        remoteHost: # not needed, but can be used to store the file remotely if needed
+          enabled: true
+          host: "my-remote-vm"
+          port: 22
+          path: /opt/hgcapp/backup/recordStreams
+          username: "cheetah"
+          password: REMOTE_HOST_PASSWORD # use this env variable
+  - name: events-stream-uploader
+    scanner:
+      path: ./test_data/hgcapp/eventsStreams
+      pattern: ".evts_sig"
+      recursive: true
+      interval: 100ms
+    processor: # each processor can upload to multiple storages concurrently or sequentially
+      maxProcessors: 10
+      retry:
+        limit: 5
+        backoff: 1s
+        interval: 1s
+      storage:
+        s3:
+          enabled: true
+          bucket: events-streams
+          region: us-east-1
+          prefix: cheetah/streams
+          endpoint: https://s3.amazonaws.com
+          accessKey: S3_ACCESS_KEY # use this env variable
+          secretKey: S3_SECRET_KEY # use this env variable
+        gcs:
+          enabled: true
+          bucket: events-streams
+          region: us-east-1
+          prefix: cheetah/streams
+          endpoint: https://storage.googleapis.com
+          accessKey: GCS_ACCESS_KEY # use this env variable
+          secretKey: GCS_SECRET_KEY # use this env variable
+        localDir: # not needed, but can be used to store the file locally if needed
+          enabled: true
+          path: test_data/backup/eventsStreams
+          mode: 0755
+        remoteHost: # not needed, but can be used to store the file remotely if needed
+          enabled: true
+          host: "my-remote-vm"
+          port: 22
+          path: /opt/hgcapp/backup/eventsStreams
+          username: "cheetah"
+          password: REMOTE_HOST_PASSWORD # use this env variable

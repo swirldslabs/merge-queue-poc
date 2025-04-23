@@ -1,0 +1,120 @@
+version: 3
+silent: false
+vars:
+  GoVersion: 1.22.1
+  OutputName: "cheetah-$GOOS-$GOARCH$BINARY_FILE_EXT"
+  BuildCommand: "go build -o build/cheetah-$GOOS-$GOARCH$BINARY_FILE_EXT ./cmd/cheetah"
+tasks:
+  clean:
+    cmds:
+      - "rm -rf build"
+      - "mkdir -p build"
+      - "go clean"
+
+  vendor:
+    cmds:
+      - "go mod vendor"
+
+  lint:
+    cmds:
+      - "go fmt -x ./..."
+
+  build:
+    deps:
+      - "vendor"
+    cmds:
+      - task: "build:cheetah:linux:amd64"
+      - task: "build:cheetah:linux:arm64"
+      - task: "build:cheetah:darwin:amd64"
+      - task: "build:cheetah:darwin:arm64"
+      - task: "build:permissions"
+
+  build:cheetah:linux:amd64:
+    env:
+      GOOS: "linux"
+      GOARCH: "amd64"
+      BINARY_FILE_EXT: ""
+    cmds:
+      - "{{.BuildCommand}}"
+    sources:
+      - "**/*.go"
+    generates:
+      - "{{.OutputName}}"
+
+  build:cheetah:linux:arm64:
+    env:
+      GOOS: "linux"
+      GOARCH: "arm64"
+      BINARY_FILE_EXT: ""
+    cmds:
+      - "{{.BuildCommand}}"
+    sources:
+      - "**/*.go"
+    generates:
+      - "{{.OutputName}}"
+
+  build:cheetah:darwin:amd64:
+    env:
+      GOOS: "darwin"
+      GOARCH: "amd64"
+      BINARY_FILE_EXT: ""
+    cmds:
+      - "{{.BuildCommand}}"
+    sources:
+      - "**/*.go"
+    generates:
+      - "{{.OutputName}}"
+
+  build:cheetah:darwin:arm64:
+    env:
+      GOOS: "darwin"
+      GOARCH: "arm64"
+      BINARY_FILE_EXT: ""
+    cmds:
+      - "{{.BuildCommand}}"
+    sources:
+      - "**/*.go"
+    generates:
+      - "{{.OutputName}}"
+
+  build:permissions:
+    cmds:
+      - "chmod +x build/*"
+
+  run:
+    deps:
+      - "run:cheetah"
+
+  run:cheetah:
+    deps:
+      - "build"
+    cmds:
+      - "build/cheetah-{{OS}}-{{ARCH}}{{exeExt}} {{.CLI_ARGS}}"
+
+  run:cheetah:skipdl:
+    deps:
+      - "build"
+    env:
+      CHEETAH_LOG_LEVEL: "Debug"
+    cmds:
+      - "build/cheetah-{{OS}}-{{ARCH}}{{exeExt}} {{.CLI_ARGS}}"
+
+  install:go:
+    deps:
+      - "install:go:linux"
+
+  install:go:linux:
+    status:
+      - "command -v go"
+    platforms:
+      - "linux/amd64"
+      - "linux/arm64"
+    cmds:
+      - "curl -sSLO https://go.dev/dl/go{{.GoVersion}}.{{OS}}-{{ARCH}}.tar.gz"
+      - "sudo mkdir -p /usr/local/go"
+      - "sudo tar -C /usr/local -xzf go{{.GoVersion}}.{{OS}}-{{ARCH}}.tar.gz"
+      - "rm -f go{{.GoVersion}}.{{OS}}-{{ARCH}}.tar.gz"
+      - "echo 'PATH=\"${PATH}:/usr/local/go/bin\"' | sudo tee /etc/profile.d/go.sh >/dev/null 2>&1"
+      - "source /etc/profile.d/go.sh"
+    generates:
+      - "/usr/local/go/**"

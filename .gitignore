@@ -464,3 +464,7 @@ secring.*
 .idea
 
 ### Ignore Generated resources
+.task
+vendor
+test_data/hgcapp
+test_data/backup

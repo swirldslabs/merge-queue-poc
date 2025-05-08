@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"os"
+	"time"
 )
 
 // Scanner defines the interface for a file scanning component.
@@ -91,15 +92,36 @@ type Storage interface {
 //   - Src: The source path of the file being stored.
 //   - Dest: The destination path where the file was stored.
 //   - Type: The type of storage (e.g., "S3", "Local").
-//   - Uploader: The identifier of the uploader used for the storage operation.
+//   - Handler: The identifier of the uploader used for the storage operation.
 //
 // Notes:
 //   - If the storage operation is successful, the Error field will be nil.
 //   - This struct is used to communicate the outcome of a storage operation.
 type StorageResult struct {
-	Error    error
-	Src      string
-	Dest     string
-	Type     string
-	Uploader string
+	Error   error
+	Src     string
+	Dest    []string
+	Type    string
+	Handler string
+}
+
+// UploadInfo represents metadata about a file upload operation.
+//
+// Fields:
+//   - Src: The source path of the file being uploaded.
+//   - Dest: The destination path where the file was uploaded.
+//   - ChecksumType: The type of checksum used (e.g., "md5").
+//   - Checksum: The checksum value of the uploaded file.
+//   - Size: The size of the uploaded file in bytes.
+//   - LastModified: The timestamp of the last modification of the uploaded file.
+//
+// Notes:
+//   - This struct is used to provide detailed information about a file upload operation.
+type UploadInfo struct {
+	Src          string
+	Dest         string
+	ChecksumType string
+	Checksum     string
+	Size         int64
+	LastModified time.Time
 }

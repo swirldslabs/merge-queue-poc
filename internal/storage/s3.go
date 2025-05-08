@@ -3,52 +3,212 @@ package storage
 import (
 	"context"
 	"fmt"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"golang.hedera.com/solo-cheetah/internal/config"
 	"golang.hedera.com/solo-cheetah/internal/core"
-	"golang.hedera.com/solo-cheetah/internal/logx"
-	"time"
+	"golang.hedera.com/solo-cheetah/pkg/fsx"
+	"golang.hedera.com/solo-cheetah/pkg/logx"
 )
 
 type s3Handler struct {
-	id           string
+	*handler
+	client       *minio.Client
 	bucketConfig config.BucketConfig
 	retryConfig  config.RetryConfig
+	bucketExists map[string]bool
 }
 
-func (s *s3Handler) Info() string {
-	return s.id
-}
-
-func (s *s3Handler) Type() string {
-	return TypeS3
-}
-
-func (s *s3Handler) Put(ctx context.Context, item core.ScannerResult, stored chan<- core.StorageResult) {
-	logx.As().Debug().
-		Str("path", item.Path).
-		Str("storage_type", s.Type()).
-		Str("handler", s.Info()).
-		Msg("Uploading file to S3 bucket")
-
-	// Simulate upload delay
-	time.Sleep(50 * time.Millisecond)
-
-	dest := fmt.Sprintf("s3://%s/%s/%s", s.bucketConfig.Prefix, s.bucketConfig.Bucket, item.Path)
-	//result := core.StorageResult{Src: item.Path, Dest: dest, Uploader: s.Info(), Type: s.Type(), Error: errors.New("failed to upload to s3")}
-	result := core.StorageResult{Src: item.Path, Dest: dest, Uploader: s.Info(), Type: s.Type()}
-
-	select {
-	case stored <- result:
+// ensureBucketExists checks if the bucket exists in S3. If it doesn't exist, it creates the bucket.
+func (s *s3Handler) ensureBucketExists(ctx context.Context) error {
+	if _, exists := s.bucketExists[s.bucketConfig.Bucket]; exists {
 		logx.As().Debug().
-			Str("path", item.Path).
 			Str("storage_type", s.Type()).
-			Str("handler", s.Info()).
-			Msg("Uploaded file to S3 bucket")
-	case <-ctx.Done():
-		return
+			Str("bucket", s.bucketConfig.Bucket).
+			Msg("Bucket existence confirmed from cache")
+		return nil
 	}
+
+	logx.As().Debug().
+		Str("storage_type", s.Type()).
+		Str("bucket", s.bucketConfig.Bucket).
+		Msg("Checking if bucket exists")
+
+	exists, err := s.client.BucketExists(ctx, s.bucketConfig.Bucket)
+	if err != nil {
+		logx.As().Error().
+			Str("storage_type", s.Type()).
+			Str("bucket", s.bucketConfig.Bucket).
+			Err(err).
+			Msg("Failed to check bucket existence")
+		return fmt.Errorf("failed to check if bucket exists: %w", err)
+	}
+
+	if !exists {
+		logx.As().Info().
+			Str("storage_type", s.Type()).
+			Str("bucket", s.bucketConfig.Bucket).
+			Msg("Bucket does not exist, creating it")
+		if err := s.client.MakeBucket(ctx, s.bucketConfig.Bucket, minio.MakeBucketOptions{Region: s.bucketConfig.Region}); err != nil {
+			logx.As().Error().
+				Str("storage_type", s.Type()).
+				Str("bucket", s.bucketConfig.Bucket).
+				Err(err).
+				Msg("Failed to create bucket")
+			return fmt.Errorf("failed to create bucket: %w", err)
+		}
+		logx.As().Info().
+			Str("storage_type", s.Type()).
+			Str("bucket", s.bucketConfig.Bucket).
+			Msg("Bucket created successfully")
+	}
+
+	s.bucketExists[s.bucketConfig.Bucket] = true
+	return nil
 }
 
-func NewS3(id string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig) (core.Storage, error) {
-	return &s3Handler{id: id, bucketConfig: bucketConfig, retryConfig: retryConfig}, nil
+// syncWithBucket uploads a file to the S3 bucket. It skips the upload if the file already exists with the same checksum.
+func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) (*core.UploadInfo, error) {
+	logx.As().Debug().
+		Str("src", src).
+		Str("object", objectName).
+		Str("bucket", s.bucketConfig.Bucket).
+		Msg("Starting file upload to bucket")
+
+	localChecksum, err := fsx.FileMD5(src)
+	if err != nil {
+		logx.As().Error().
+			Str("src", src).
+			Err(err).
+			Msg("Failed to calculate local file checksum")
+		return nil, fmt.Errorf("failed to calculate local checksum: %w", err)
+	}
+
+	attr, err := s.client.StatObject(ctx, s.bucketConfig.Bucket, objectName, minio.StatObjectOptions{})
+	if err == nil && localChecksum == attr.ETag {
+		logx.As().Info().
+			Str("src", src).
+			Str("object", objectName).
+			Str("md5", attr.ETag).
+			Str("bucket", s.bucketConfig.Bucket).
+			Time("last_modified", attr.LastModified).
+			Msg("File already exists in bucket, skipping upload")
+		return &core.UploadInfo{
+			Src:          src,
+			Dest:         attr.Key,
+			ChecksumType: "md5",
+			Checksum:     attr.ETag,
+			Size:         attr.Size,
+			LastModified: attr.LastModified,
+		}, nil
+	}
+
+	logx.As().Info().
+		Str("src", src).
+		Str("object", objectName).
+		Str("bucket", s.bucketConfig.Bucket).
+		Msg("Uploading file to bucket")
+
+	info, err := s.client.FPutObject(ctx, s.bucketConfig.Bucket, objectName, src, minio.PutObjectOptions{
+		SendContentMd5:        true,
+		ConcurrentStreamParts: false,
+	})
+	if err != nil {
+		logx.As().Error().
+			Str("src", src).
+			Str("object", objectName).
+			Str("bucket", s.bucketConfig.Bucket).
+			Err(err).
+			Msg("Failed to upload file to bucket")
+		return nil, fmt.Errorf("failed to upload file to S3: %w", err)
+	}
+
+	if info.ETag != localChecksum {
+		logx.As().Error().
+			Str("src", src).
+			Str("object", objectName).
+			Str("expected_md5", localChecksum).
+			Str("actual_md5", info.ETag).
+			Msg("Checksum mismatch after upload")
+		return nil, fmt.Errorf("checksum mismatch after upload: expected %s, got %s", localChecksum, info.ETag)
+	}
+
+	logx.As().Info().
+		Str("src", src).
+		Str("object", objectName).
+		Str("md5", info.ETag).
+		Str("bucket", s.bucketConfig.Bucket).
+		Time("last_modified", info.LastModified).
+		Msg("File uploaded successfully to the bucket")
+
+	return &core.UploadInfo{
+		Src:          src,
+		Dest:         info.Key,
+		ChecksumType: "md5",
+		Checksum:     info.ETag,
+		Size:         info.Size,
+		LastModified: info.LastModified,
+	}, nil
+}
+
+// newS3Handler initializes a new S3 handler with the provided configuration and retry settings.
+func newS3Handler(id string, storageType string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, fileExtensions []string) (core.Storage, error) {
+	if err := config.ValidateBucketConfig(bucketConfig); err != nil {
+		logx.As().Error().
+			Str("storage_type", storageType).
+			Err(err).
+			Msg("Invalid bucket configuration")
+		return nil, err
+	}
+
+	client, err := minio.New(bucketConfig.Endpoint, &minio.Options{
+		Creds:      credentials.NewStaticV4(bucketConfig.AccessKey, bucketConfig.SecretKey, ""),
+		Secure:     bucketConfig.UseSSL,
+		MaxRetries: retryConfig.Limit,
+	})
+	if err != nil {
+		logx.As().Error().
+			Str("storage_type", storageType).
+			Err(err).
+			Msg("Failed to create MinIO client")
+		return nil, fmt.Errorf("failed to create minio client: %w", err)
+	}
+
+	logx.As().Debug().
+		Str("storage_type", storageType).
+		Str("endpoint", bucketConfig.Endpoint).
+		Msg("MinIO client created successfully")
+
+	s3 := &s3Handler{
+		handler: &handler{
+			id:             id,
+			storageType:    storageType,
+			fileExtensions: fileExtensions,
+			pathPrefix:     bucketConfig.Prefix,
+		},
+		client:       client,
+		bucketConfig: bucketConfig,
+		retryConfig:  retryConfig,
+		bucketExists: make(map[string]bool),
+	}
+
+	s3.handler.preSync = s3.ensureBucketExists
+	s3.handler.syncFile = s3.syncWithBucket
+
+	logx.As().Debug().
+		Str("id", s3.Info()).
+		Str("storage_type", TypeLocalDir).
+		Msg("S3 storage handler created successfully")
+
+	return s3, nil
+}
+
+// NewS3 creates a new S3 storage handler.
+func NewS3(id string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, fileExtensions []string) (core.Storage, error) {
+	return newS3Handler(id, TypeS3, bucketConfig, retryConfig, fileExtensions)
+}
+
+// NewGCSWithS3 creates a new GCS storage handler using the S3-compatible API.
+func NewGCSWithS3(id string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, fileExtensions []string) (core.Storage, error) {
+	return newS3Handler(id, TypeGCS, bucketConfig, retryConfig, fileExtensions)
 }

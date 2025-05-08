@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"golang.hedera.com/solo-cheetah/internal/logx"
+	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"os"
 	"path/filepath"
 )
@@ -70,19 +70,19 @@ func (s *scanner) Scan(ctx context.Context, path string, ech chan<- error) <-cha
 				return nil // ignore non-regular files and non-matching extensions
 			}
 
-			logx.As().Debug().
+			logx.As().Info().
 				Str("path", path).
 				Str("scanner", s.Info()).
 				Str("ext", filepath.Ext(path)).
 				Str("pattern", s.pattern).
-				Msg("Candidate file found")
+				Msg("Scanner found marker file")
 
 			select {
 			case items <- ScannerResult{Path: path, Info: info}:
 				logx.As().Info().
-					Str("path", path).
+					Str("marker", path).
 					Str("scanner", s.Info()).
-					Msg("Candidate file added to queue")
+					Msg("Scanner added marker file to the queue")
 			case <-ctx.Done():
 				return nil
 			}

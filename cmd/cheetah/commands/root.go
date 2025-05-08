@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"golang.hedera.com/solo-cheetah/internal/config"
-	"golang.hedera.com/solo-cheetah/internal/logx"
+	"golang.hedera.com/solo-cheetah/pkg/logx"
 )
 
 var (
@@ -45,7 +45,7 @@ func initConfig() {
 		cobra.CheckErr(err)
 	}
 
-	err = logx.Initialize()
+	err = logx.Initialize(config.Get().Log)
 	if err != nil {
 		fmt.Println(err)
 		cobra.CheckErr(err)

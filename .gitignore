@@ -466,5 +466,6 @@ secring.*
 ### Ignore Generated resources
 .task
 vendor
-test_data/hgcapp
+test/data/hgcapp
 test_data/backup
+test/data/backup

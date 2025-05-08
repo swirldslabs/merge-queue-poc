@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"golang.hedera.com/solo-cheetah/internal/config"
 	"golang.hedera.com/solo-cheetah/internal/core"
-	"golang.hedera.com/solo-cheetah/internal/logx"
+	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"time"
 )
 
@@ -33,8 +33,8 @@ func (r *remoteHostHandler) Put(ctx context.Context, item core.ScannerResult, st
 	// Simulate upload delay
 	time.Sleep(50 * time.Millisecond)
 
-	dest := fmt.Sprintf("%s@%s:%s", r.config.Username, r.config.Host, item.Path)
-	result := core.StorageResult{Src: item.Path, Dest: dest, Uploader: r.Info(), Type: r.Type()}
+	dest := []string{fmt.Sprintf("%s@%s:%s", r.config.Username, r.config.Host, item.Path)}
+	result := core.StorageResult{Src: item.Path, Dest: dest, Handler: r.Info(), Type: r.Type()}
 
 	select {
 	case stored <- result:

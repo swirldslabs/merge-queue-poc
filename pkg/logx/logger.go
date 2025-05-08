@@ -3,7 +3,6 @@ package logx
 import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/pkgerrors"
-	"golang.hedera.com/solo-cheetah/internal/config"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"io"
 	"os"
@@ -15,11 +14,33 @@ var logger zerolog.Logger
 var startTime time.Time
 var pid = os.Getpid()
 
-func Initialize() error {
-	return InitializeWithOptions(config.Get().Log)
+// LoggingConfig holds the configuration for logging.
+type LoggingConfig struct {
+	// Level is the log level to use (e.g., "Info", "Debug").
+	Level string
+	// ConsoleLogging enables logging to the console.
+	ConsoleLogging bool
+	// FileLogging enables logging to a file.
+	FileLogging bool
+	// Directory specifies the directory for log files (used if FileLogging is enabled).
+	Directory string
+	// Filename is the name of the log file.
+	Filename string
+	// MaxSize is the maximum size (in MB) of a log file before it is rolled.
+	MaxSize int
+	// MaxBackups is the maximum number of rolled log files to keep.
+	MaxBackups int
+	// MaxAge is the maximum age (in days) to keep a log file.
+	MaxAge int
+	// Compress enables compression of rolled log files.
+	Compress bool
 }
 
-func newRollingFile(cfg *config.LoggingConfig) (io.Writer, error) {
+func Initialize(c *LoggingConfig) error {
+	return InitializeWithOptions(c)
+}
+
+func newRollingFile(cfg *LoggingConfig) (io.Writer, error) {
 	return &lumberjack.Logger{
 		Filename:   path.Join(cfg.Directory, cfg.Filename),
 		MaxBackups: cfg.MaxBackups, // files
@@ -29,7 +50,7 @@ func newRollingFile(cfg *config.LoggingConfig) (io.Writer, error) {
 	}, nil
 }
 
-func InitializeWithOptions(cfg *config.LoggingConfig) error {
+func InitializeWithOptions(cfg *LoggingConfig) error {
 	l, err := zerolog.ParseLevel(cfg.Level)
 	if err != nil {
 		return err

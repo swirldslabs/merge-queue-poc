@@ -8,13 +8,13 @@ import (
 )
 
 func TestInitialize(t *testing.T) {
-	dataDir := "../../data"
-	homeDir := path.Join(dataDir, ".cheetah", "cheetah.yaml")
+	dataDir := "../../test/data"
+	configFile := path.Join(dataDir, "../config/.cheetah", "cheetah.yaml")
 
 	_ = os.Setenv("CHEETAH_LOG.LEVEL", "Debug") // use viper's SetEnvPrefix and automatic env var loading
 	_ = os.Setenv("S3_ACCESS_KEY", "test")      // custom env var loading based on config
 
-	err := Initialize(homeDir)
+	err := Initialize(configFile)
 	if err != nil {
 		t.Fatalf("Failed to initialize config: %v", err)
 	}

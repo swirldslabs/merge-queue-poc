@@ -6,8 +6,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.hedera.com/solo-cheetah/internal/config"
 	"golang.hedera.com/solo-cheetah/internal/core"
-	"golang.hedera.com/solo-cheetah/internal/logx"
 	"golang.hedera.com/solo-cheetah/internal/storage"
+	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"os"
 	"os/signal"
 	"sync"
@@ -47,7 +47,8 @@ func runUpload(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, pipeline := range config.Get().Pipelines {
 		// Create scanner
-		scanner, err := core.NewScanner(fmt.Sprintf("scanner-%s", pipeline.Name), pipeline.Scanner.Path, pipeline.Scanner.Pattern)
+		scanner, err := core.NewScanner(fmt.Sprintf("scanner-%s", pipeline.Name),
+			pipeline.Scanner.Path, pipeline.Scanner.Pattern)
 		if err != nil {
 			logx.As().Error().Err(err).Msg("Failed to create scanner")
 			return
@@ -101,7 +102,8 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 		var storages []core.Storage
 
 		if pc.Processor.Storage.LocalDir.Enabled {
-			localDir, err := storage.NewLocalDir(fmt.Sprintf("dir-%d-%s", i, pc.Name), *pc.Processor.Storage.LocalDir, *pc.Processor.Retry)
+			localDir, err := storage.NewLocalDir(fmt.Sprintf("dir-%d-%s", i, pc.Name),
+				*pc.Processor.Storage.LocalDir, *pc.Processor.Retry, pc.Processor.FileExtensions)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create LocalDir storage: %w", err)
 			}
@@ -110,7 +112,8 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 		}
 
 		if pc.Processor.Storage.RemoteHost.Enabled {
-			remoteHost, err := storage.NewRemoteHost(fmt.Sprintf("host-%d-%s", i, pc.Name), *pc.Processor.Storage.RemoteHost, *pc.Processor.Retry)
+			remoteHost, err := storage.NewRemoteHost(fmt.Sprintf("host-%d-%s", i, pc.Name),
+				*pc.Processor.Storage.RemoteHost, *pc.Processor.Retry)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create RemoteHost storage: %w", err)
 			}
@@ -119,7 +122,8 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 		}
 
 		if pc.Processor.Storage.S3.Enabled {
-			s3, err := storage.NewS3(fmt.Sprintf("s3-%d-%s", i, pc.Name), *pc.Processor.Storage.S3, *pc.Processor.Retry)
+			s3, err := storage.NewS3(fmt.Sprintf("s3-%d-%s", i, pc.Name),
+				*pc.Processor.Storage.S3, *pc.Processor.Retry, pc.Processor.FileExtensions)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create S3 storage: %w", err)
 			}
@@ -128,7 +132,8 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 		}
 
 		if pc.Processor.Storage.GCS.Enabled {
-			gcs, err := storage.NewGCS(fmt.Sprintf("gcs-%d-%s", i, pc.Name), *pc.Processor.Storage.GCS, *pc.Processor.Retry)
+			gcs, err := storage.NewGCSWithS3(fmt.Sprintf("gcs-%d-%s", i, pc.Name),
+				*pc.Processor.Storage.GCS, *pc.Processor.Retry, pc.Processor.FileExtensions)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create GCS storage: %w", err)
 			}
@@ -136,7 +141,8 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 			storages = append(storages, gcs)
 		}
 
-		p, err := core.NewProcessor(fmt.Sprintf("processor-%d-%s", i, pc.Name), storages)
+		p, err := core.NewProcessor(fmt.Sprintf("processor-%d-%s", i, pc.Name),
+			storages, pc.Processor.FileExtensions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create processor: %w", err)
 		}
@@ -147,7 +153,9 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 	return processors, nil
 }
 
-func startPipeline(ctx context.Context, c *config.PipelineConfig, scanner core.Scanner, processors []core.Processor) error {
+func startPipeline(ctx context.Context, c *config.PipelineConfig,
+	scanner core.Scanner, processors []core.Processor) error {
+
 	delay, err := time.ParseDuration(c.Scanner.Interval)
 	if err != nil {
 		return fmt.Errorf("error parsing watch interval: %w", err)
@@ -206,7 +214,7 @@ func startPipeline(ctx context.Context, c *config.PipelineConfig, scanner core.S
 				}
 			}
 
-			if errorFound {
+			if errorFound == true {
 				return fmt.Errorf("pipeline '%s' encountered errors", c.Name)
 			}
 

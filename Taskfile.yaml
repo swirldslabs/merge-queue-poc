@@ -29,6 +29,30 @@ tasks:
       - task: "build:cheetah:darwin:arm64"
       - task: "build:permissions"
 
+  build:image:
+    cmds:
+      - "docker build -t solo-cheetah ."
+
+  run:image:
+    cmds:
+      - "docker run -it -v $(PWD)/test/config:/app/config -v $(PWD)/test/data:/app/data solo-cheetah upload --config /app/config/.cheetah/cheetah.yaml"
+
+  run:gen-record-streams: # for testing
+    cmds:
+      - "test/scripts/gen.sh test/data/hgcapp/recordStreams rcd_sig rcd 10 0.1 1000"
+
+  run:gen-events-streams: # for testing
+    cmds:
+      - "test/scripts/gen.sh test/data/hgcapp/eventsStreams evts_sig evts 10 0.1 1000"
+
+  run:cleanup-record-streams: # for testing
+    cmds:
+      - "./test/scripts/clean.sh test/data/backup/recordStreams 10000 0.2"
+
+  run:cleanup-events-streams: # for testing
+    cmds:
+      - "./test/scripts/clean.sh test/data/backup/eventsStreams 10000 0.2"
+
   build:cheetah:linux:amd64:
     env:
       GOOS: "linux"

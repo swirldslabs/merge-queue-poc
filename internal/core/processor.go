@@ -3,15 +3,16 @@ package core
 import (
 	"context"
 	"fmt"
-	"golang.hedera.com/solo-cheetah/internal/fsx"
-	"golang.hedera.com/solo-cheetah/internal/logx"
+	"golang.hedera.com/solo-cheetah/pkg/fsx"
+	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"os"
 	"sync"
 )
 
 type processor struct {
-	id       string
-	storages []Storage
+	id             string
+	storages       []Storage
+	fileExtensions []string
 }
 
 func (p *processor) Info() string {
@@ -86,7 +87,7 @@ func (p *processor) upload(ctx context.Context, items <-chan ScannerResult) <-ch
 			case <-ctx.Done():
 				logx.As().Warn().Msg("Processor context cancelled, stopping uploading files")
 			default:
-				if !fsx.PathExists(item.Path) {
+				if _, exists := fsx.PathExists(item.Path); !exists {
 					continue
 				}
 
@@ -97,7 +98,7 @@ func (p *processor) upload(ctx context.Context, items <-chan ScannerResult) <-ch
 					Result: make(map[string]*StorageResult),
 				}
 
-				logx.As().Info().Str("path", item.Path).Msg("Processing file")
+				logx.As().Info().Str("marker", item.Path).Msg("Processor processing marker file")
 
 				// parallel upload
 				var wg sync.WaitGroup
@@ -121,21 +122,6 @@ func (p *processor) upload(ctx context.Context, items <-chan ScannerResult) <-ch
 						if pr.Error == nil {
 							pr.Error = fmt.Errorf("%s: %s", resp.Error, resp.Src) // set the first error
 						}
-
-						logx.As().Error().Err(resp.Error).
-							Str("path", item.Path).
-							Str("remote", resp.Dest).
-							Str("type", resp.Type).
-							Str("uploader", resp.Uploader).
-							Msg("Error in storage response")
-
-					} else {
-						logx.As().Info().
-							Str("path", item.Path).
-							Str("remote", resp.Dest).
-							Str("type", resp.Type).
-							Str("uploader", resp.Uploader).
-							Msg("Received storage response")
 					}
 
 					pr.Result[resp.Type] = &resp
@@ -151,9 +137,10 @@ func (p *processor) upload(ctx context.Context, items <-chan ScannerResult) <-ch
 				// fail fast if any storage operation failed
 				if pr.Error != nil {
 					logx.As().Warn().
+						Err(pr.Error).
 						Str("processor", p.Info()).
-						Str("path", item.Path).
-						Msg("Failed to store item in all storages; stopping file upload...")
+						Str("marker", item.Path).
+						Msg("One or more storage sync operation has failed; stopping file upload...")
 				}
 			}
 		}
@@ -189,7 +176,7 @@ func (p *processor) remove(ctx context.Context, stored <-chan ProcessorResult) <
 			select {
 			case <-ctx.Done():
 				logx.As().Warn().
-					Str("path", resp.Path).
+					Str("marker", resp.Path).
 					Str("processor", p.Info()).
 					Msg("Processor context cancelled, stopping file removal")
 				return
@@ -203,29 +190,32 @@ func (p *processor) remove(ctx context.Context, stored <-chan ProcessorResult) <
 					continue // skip file removal if there was an error
 				}
 
-				var remotePaths []string
-				for _, result := range resp.Result {
-					if result.Error == nil {
-						remotePaths = append(remotePaths, result.Dest)
-					}
+				var removalCandidates []string
+				dir, fileName, _ := fsx.SplitFilePath(resp.Path)
+				for _, ext := range p.fileExtensions {
+					removalCandidates = append(removalCandidates, fsx.CombineFilePath(dir, fileName, ext))
 				}
 
 				logx.As().Info().
-					Str("path", resp.Path).
+					Str("marker", resp.Path).
 					Str("processor", p.Info()).
-					Str("remote_paths", fmt.Sprintf("%v", remotePaths)).
-					Msg("Uploaded file to remote storage, removing local copy")
+					Str("local_files", fmt.Sprintf("%v", removalCandidates)).
+					Msg("Processor processed marker file, removing local copies")
 
-				err := os.Remove(resp.Path)
-				if err != nil {
-					logx.As().
-						Err(err).
-						Str("path", resp.Path).
-						Msg("Failed to remove file")
-					select {
-					case sch <- err:
-					case <-ctx.Done():
-						return
+				for _, pathToRemove := range removalCandidates {
+					if _, exists := fsx.PathExists(pathToRemove); exists {
+						err := os.Remove(pathToRemove)
+						if err != nil {
+							logx.As().
+								Err(err).
+								Str("path", pathToRemove).
+								Msg("Failed to remove file")
+							select {
+							case sch <- err:
+							case <-ctx.Done():
+								return
+							}
+						}
 					}
 				}
 			}
@@ -234,9 +224,10 @@ func (p *processor) remove(ctx context.Context, stored <-chan ProcessorResult) <
 	return sch
 }
 
-func NewProcessor(id string, storages []Storage) (Processor, error) {
+func NewProcessor(id string, storages []Storage, fileExtensions []string) (Processor, error) {
 	return &processor{
-		id:       id,
-		storages: storages,
+		id:             id,
+		storages:       storages,
+		fileExtensions: fileExtensions,
 	}, nil
 }

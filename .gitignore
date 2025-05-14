@@ -469,3 +469,4 @@ vendor
 test/data/hgcapp
 test_data/backup
 test/data/backup
+unit-test-report.md

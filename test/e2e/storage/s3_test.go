@@ -24,7 +24,7 @@ type s3TestHandler struct {
 
 func (h *s3TestHandler) loadConfig() error {
 	if h.configFile == "" {
-		h.configFile = path.Join(h.dataDir, "../config/.cheetah", "cheetah.yaml")
+		h.configFile = path.Join(h.dataDir, "../config/.cheetah", "cheetah-test.yaml")
 	}
 
 	return config.Initialize(h.configFile)

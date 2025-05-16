@@ -1,15 +1,21 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"github.com/spf13/cobra"
 	"golang.hedera.com/solo-cheetah/internal/config"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
+	"golang.hedera.com/solo-cheetah/pkg/sniff"
+	_ "net/http/pprof"
 )
 
 var (
 	// Used for flags.
-	flagConfig string
+	flagConfig     string
+	flagCpuProfile string
+	flagMemProfile string
+	flagPoll       bool // exit after execution
 
 	rootCmd = &cobra.Command{
 		Use:   "cheetah",
@@ -26,7 +32,10 @@ func Execute() error {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVarP(&flagConfig, "config", "d", "", "config file path")
+	rootCmd.PersistentFlags().StringVarP(&flagConfig, "config", "c", "", "config file path")
+	rootCmd.PersistentFlags().StringVarP(&flagCpuProfile, "cpu-profile", "", "", "file to write cpu profile")
+	rootCmd.PersistentFlags().StringVarP(&flagMemProfile, "mem-profile", "", "", "file to write memory profile")
+	rootCmd.PersistentFlags().BoolVarP(&flagPoll, "poll", "", true, "poll for marker files")
 
 	// make flags mandatory
 	_ = rootCmd.MarkPersistentFlagRequired("config")
@@ -50,5 +59,9 @@ func initConfig() {
 		fmt.Println(err)
 		cobra.CheckErr(err)
 	}
+}
 
+func startProfiling(ctx context.Context) error {
+	profilingConf := *config.Get().Profiling
+	return sniff.Start(ctx, profilingConf)
 }

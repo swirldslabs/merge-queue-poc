@@ -51,6 +51,8 @@ USER appuser:appuser
 COPY --from=builder /app/cheetah .
 
 # Define volumes for data and config
-VOLUME ["/app/data", "/app/config"]
+VOLUME ["/app/data", "/app/config", "/app/logs", "/app/stats"]
+
+EXPOSE 6060
 
 ENTRYPOINT ["/app/cheetah"]

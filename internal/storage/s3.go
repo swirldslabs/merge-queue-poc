@@ -36,16 +36,11 @@ func (s *s3Handler) ensureBucketExists(ctx context.Context) error {
 
 	exists, err := s.client.BucketExists(ctx, s.bucketConfig.Bucket)
 	if err != nil {
-		logx.As().Error().
-			Str("storage_type", s.Type()).
-			Str("bucket", s.bucketConfig.Bucket).
-			Err(err).
-			Msg("Failed to check bucket existence")
 		return fmt.Errorf("failed to check if bucket exists: %w", err)
 	}
 
 	if !exists {
-		logx.As().Info().
+		logx.As().Debug().
 			Str("storage_type", s.Type()).
 			Str("bucket", s.bucketConfig.Bucket).
 			Msg("Bucket does not exist, creating it")
@@ -57,7 +52,7 @@ func (s *s3Handler) ensureBucketExists(ctx context.Context) error {
 				Msg("Failed to create bucket")
 			return fmt.Errorf("failed to create bucket: %w", err)
 		}
-		logx.As().Info().
+		logx.As().Debug().
 			Str("storage_type", s.Type()).
 			Str("bucket", s.bucketConfig.Bucket).
 			Msg("Bucket created successfully")
@@ -86,7 +81,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 
 	attr, err := s.client.StatObject(ctx, s.bucketConfig.Bucket, objectName, minio.StatObjectOptions{})
 	if err == nil && localChecksum == attr.ETag {
-		logx.As().Info().
+		logx.As().Debug().
 			Str("src", src).
 			Str("object", objectName).
 			Str("md5", attr.ETag).
@@ -103,7 +98,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 		}, nil
 	}
 
-	logx.As().Info().
+	logx.As().Debug().
 		Str("src", src).
 		Str("object", objectName).
 		Str("bucket", s.bucketConfig.Bucket).
@@ -133,7 +128,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 		return nil, fmt.Errorf("checksum mismatch after upload: expected %s, got %s", localChecksum, info.ETag)
 	}
 
-	logx.As().Info().
+	logx.As().Debug().
 		Str("src", src).
 		Str("object", objectName).
 		Str("md5", info.ETag).
@@ -152,7 +147,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 }
 
 // newS3Handler initializes a new S3 handler with the provided configuration and retry settings.
-func newS3Handler(id string, storageType string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, fileExtensions []string) (core.Storage, error) {
+func newS3Handler(id string, storageType string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, rootDir string, fileExtensions []string) (core.Storage, error) {
 	if err := config.ValidateBucketConfig(bucketConfig); err != nil {
 		logx.As().Error().
 			Str("storage_type", storageType).
@@ -185,6 +180,7 @@ func newS3Handler(id string, storageType string, bucketConfig config.BucketConfi
 			storageType:    storageType,
 			fileExtensions: fileExtensions,
 			pathPrefix:     bucketConfig.Prefix,
+			rootDir:        rootDir,
 		},
 		client:       client,
 		bucketConfig: bucketConfig,
@@ -192,8 +188,12 @@ func newS3Handler(id string, storageType string, bucketConfig config.BucketConfi
 		bucketExists: make(map[string]bool),
 	}
 
-	s3.handler.preSync = s3.ensureBucketExists
 	s3.handler.syncFile = s3.syncWithBucket
+
+	// create bucket so that multiple goroutines do not compete to create the bucket
+	if err := s3.ensureBucketExists(context.Background()); err != nil {
+		return nil, err
+	}
 
 	logx.As().Debug().
 		Str("id", s3.Info()).
@@ -204,11 +204,11 @@ func newS3Handler(id string, storageType string, bucketConfig config.BucketConfi
 }
 
 // NewS3 creates a new S3 storage handler.
-func NewS3(id string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, fileExtensions []string) (core.Storage, error) {
-	return newS3Handler(id, TypeS3, bucketConfig, retryConfig, fileExtensions)
+func NewS3(id string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, rootDir string, fileExtensions []string) (core.Storage, error) {
+	return newS3Handler(id, TypeS3, bucketConfig, retryConfig, rootDir, fileExtensions)
 }
 
 // NewGCSWithS3 creates a new GCS storage handler using the S3-compatible API.
-func NewGCSWithS3(id string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, fileExtensions []string) (core.Storage, error) {
-	return newS3Handler(id, TypeGCS, bucketConfig, retryConfig, fileExtensions)
+func NewGCSWithS3(id string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, rootDir string, fileExtensions []string) (core.Storage, error) {
+	return newS3Handler(id, TypeGCS, bucketConfig, retryConfig, rootDir, fileExtensions)
 }

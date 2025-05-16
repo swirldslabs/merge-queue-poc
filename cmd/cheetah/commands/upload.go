@@ -41,14 +41,18 @@ func runUpload(ctx context.Context) {
 	// Initialize configuration
 	if err := config.Initialize(flagConfig); err != nil {
 		logx.As().Fatal().Err(err).Msg("Failed to initialize config")
-		return
+	}
+
+	err := startProfiling(ctx)
+	if err != nil {
+		logx.As().Fatal().Err(err).Msg("Failed to initialize profiling")
 	}
 
 	var wg sync.WaitGroup
 	for _, pipeline := range config.Get().Pipelines {
 		// Create scanner
 		scanner, err := core.NewScanner(fmt.Sprintf("scanner-%s", pipeline.Name),
-			pipeline.Scanner.Path, pipeline.Scanner.Pattern)
+			pipeline.Scanner.Directory, pipeline.Scanner.Pattern, pipeline.Scanner.BatchSize)
 		if err != nil {
 			logx.As().Error().Err(err).Msg("Failed to create scanner")
 			return
@@ -57,7 +61,7 @@ func runUpload(ctx context.Context) {
 		// Prepare processors
 		processors, err := prepareProcessors(pipeline)
 		if err != nil {
-			logx.As().Error().Err(err).Msg("Failed to prepare processors")
+			logx.As().Error().Err(err).Str("pipeline", pipeline.Name).Msg("Failed to prepare processor dependencies")
 			return
 		}
 
@@ -78,7 +82,8 @@ func runUpload(ctx context.Context) {
 	// we run in separate goroutine to avoid blocking the main thread that waits for OS signals to terminate
 	go func() {
 		wg.Wait()
-		logx.As().Info().Msg("All pipelines are stopped")
+		logx.As().Info().Str("total_time", logx.ExecutionTime()).Msg("All pipelines have stopped")
+		cancelFunc()
 	}()
 
 	// Handle OS signals for graceful shutdown
@@ -87,7 +92,7 @@ func runUpload(ctx context.Context) {
 
 	select {
 	case <-sigCh:
-		logx.As().Info().Msg("Received exit signal, stopping pipelines...")
+		logx.As().Debug().Msg("Received exit signal, stopping pipelines...")
 		cancelFunc()
 	case <-ctx.Done():
 	}
@@ -103,7 +108,7 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 
 		if pc.Processor.Storage.LocalDir.Enabled {
 			localDir, err := storage.NewLocalDir(fmt.Sprintf("dir-%d-%s", i, pc.Name),
-				*pc.Processor.Storage.LocalDir, *pc.Processor.Retry, pc.Processor.FileExtensions)
+				*pc.Processor.Storage.LocalDir, *pc.Processor.Retry, pc.Scanner.Directory, pc.Processor.FileExtensions)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create LocalDir storage: %w", err)
 			}
@@ -111,19 +116,9 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 			storages = append(storages, localDir)
 		}
 
-		if pc.Processor.Storage.RemoteHost.Enabled {
-			remoteHost, err := storage.NewRemoteHost(fmt.Sprintf("host-%d-%s", i, pc.Name),
-				*pc.Processor.Storage.RemoteHost, *pc.Processor.Retry)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create RemoteHost storage: %w", err)
-			}
-
-			storages = append(storages, remoteHost)
-		}
-
 		if pc.Processor.Storage.S3.Enabled {
 			s3, err := storage.NewS3(fmt.Sprintf("s3-%d-%s", i, pc.Name),
-				*pc.Processor.Storage.S3, *pc.Processor.Retry, pc.Processor.FileExtensions)
+				*pc.Processor.Storage.S3, *pc.Processor.Retry, pc.Scanner.Directory, pc.Processor.FileExtensions)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create S3 storage: %w", err)
 			}
@@ -133,7 +128,7 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 
 		if pc.Processor.Storage.GCS.Enabled {
 			gcs, err := storage.NewGCSWithS3(fmt.Sprintf("gcs-%d-%s", i, pc.Name),
-				*pc.Processor.Storage.GCS, *pc.Processor.Retry, pc.Processor.FileExtensions)
+				*pc.Processor.Storage.GCS, *pc.Processor.Retry, pc.Scanner.Directory, pc.Processor.FileExtensions)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create GCS storage: %w", err)
 			}
@@ -163,6 +158,8 @@ func startPipeline(ctx context.Context, c *config.PipelineConfig,
 
 	logx.As().Info().
 		Str("pipeline", c.Name).
+		Str("root_dir", c.Scanner.Directory).
+		Str("marker_pattern", c.Scanner.Pattern).
 		Msg("Pipeline started")
 
 	for {
@@ -174,7 +171,7 @@ func startPipeline(ctx context.Context, c *config.PipelineConfig,
 			var pwg sync.WaitGroup
 
 			// Scan files
-			items := scanner.Scan(ctx, c.Scanner.Path, ech)
+			items := scanner.Scan(ctx, ech)
 
 			// Process files
 			for _, processor := range processors {
@@ -214,8 +211,13 @@ func startPipeline(ctx context.Context, c *config.PipelineConfig,
 				}
 			}
 
-			if errorFound == true {
-				return fmt.Errorf("pipeline '%s' encountered errors", c.Name)
+			if errorFound == true && c.StopOnError {
+				return fmt.Errorf("pipeline '%s' encountered error", c.Name)
+			}
+
+			if flagPoll == false {
+				logx.As().Debug().Str("pipeline", c.Name).Msg("Polling is disabled, exiting pipeline...")
+				return nil
 			}
 
 			// delay

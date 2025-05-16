@@ -7,6 +7,8 @@ import (
 	"golang.hedera.com/solo-cheetah/internal/core"
 	"golang.hedera.com/solo-cheetah/pkg/fsx"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
+	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -23,6 +25,7 @@ type handler struct {
 	id             string
 	storageType    string
 	fileExtensions []string
+	rootDir        string
 	pathPrefix     string
 	preSync        func(ctx context.Context) error
 	syncFile       func(ctx context.Context, src string, dest string) (*core.UploadInfo, error)
@@ -70,7 +73,7 @@ func (h *handler) Put(ctx context.Context, marker core.ScannerResult, stored cha
 	}
 
 	if err == nil {
-		log.Info().Str("marker", marker.Path).Msg(fmt.Sprintf("%s successfully handled the marker file", h.Type()))
+		log.Debug().Str("marker", marker.Path).Msg(fmt.Sprintf("%s successfully handled the marker file", h.Type()))
 	} else {
 		log.Error().Str("marker", marker.Path).Stack().Err(err).Msg(fmt.Sprintf("%s failed to handle file", h.Type()))
 	}
@@ -80,6 +83,13 @@ func (h *handler) Put(ctx context.Context, marker core.ScannerResult, stored cha
 	case <-ctx.Done():
 		log.Warn().Msg("Context canceled while uploading to storage")
 	}
+}
+
+func (h *handler) computeDestinationPath(srcDir string, fileName string, ext string) string {
+	subDirs := strings.TrimPrefix(srcDir, h.rootDir)
+	destDir := filepath.Join(h.pathPrefix, subDirs)
+	dest := fsx.CombineFilePath(destDir, fileName, ext)
+	return dest
 }
 
 // runParallel synchronizes multiple files in parallel based on the provided extensions.
@@ -103,11 +113,13 @@ func (h *handler) runParallel(ctx context.Context, markerFile string, candidateE
 		return nil, errors.New("invalid marker file or candidate extensions")
 	}
 
-	if err := h.preSync(ctx); err != nil {
-		return nil, fmt.Errorf("pre-sync validation failed: %w", err)
+	if h.preSync != nil {
+		if err := h.preSync(ctx); err != nil {
+			return nil, fmt.Errorf("pre-sync validation failed: %w", err)
+		}
 	}
 
-	dir, fileName, _ := fsx.SplitFilePath(markerFile)
+	srcDir, fileName, _ := fsx.SplitFilePath(markerFile)
 	var results []*core.UploadInfo
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -117,13 +129,13 @@ func (h *handler) runParallel(ctx context.Context, markerFile string, candidateE
 		wg.Add(1)
 		go func(ext string) {
 			defer wg.Done()
-			src := fsx.CombineFilePath(dir, fileName, ext)
+			src := fsx.CombineFilePath(srcDir, fileName, ext)
 			if _, exists := fsx.PathExists(src); !exists {
 				logx.As().Warn().Str("src", src).Str("storage_type", h.Type()).Msg("Source file does not exist, skipping upload")
 				return
 			}
 
-			dest := fsx.CombineFilePath(h.pathPrefix, fileName, ext)
+			dest := h.computeDestinationPath(srcDir, fileName, ext)
 
 			result, err := h.syncFile(ctx, src, dest)
 			if err != nil {

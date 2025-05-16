@@ -2,15 +2,19 @@ package core
 
 import (
 	"context"
+	"fmt"
+	"golang.hedera.com/solo-cheetah/internal/config"
+	"golang.hedera.com/solo-cheetah/pkg/fsx"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"os"
 	"path/filepath"
 )
 
 type scanner struct {
-	id      string
-	path    string
-	pattern string
+	id        string
+	directory string
+	pattern   string
+	walker    *fsx.Walker
 }
 
 // Info returns a unique identifier for the scanner or processor instance.
@@ -24,12 +28,11 @@ func (s *scanner) Info() string {
 	return s.id
 }
 
-// Scan traverses the specified directory path to find files matching the configured pattern.
+// Scan traverses the specified directory directory to find files matching the configured pattern.
 // It streams the results of the scan through a channel and sends any errors encountered to the provided error channel.
 //
 // Parameters:
 //   - ctx: The context used to manage cancellation and timeouts for the scanning process.
-//   - path: The root directory path to start the scan.
 //   - ech: A channel to which errors encountered during the scan are sent.
 //
 // Returns:
@@ -44,17 +47,20 @@ func (s *scanner) Info() string {
 // Notes:
 //   - The returned channel is closed after all matching files have been processed or if the context is canceled.
 //   - Errors encountered during the scan are sent to the error channel but do not stop the scanning process.
-func (s *scanner) Scan(ctx context.Context, path string, ech chan<- error) <-chan ScannerResult {
+func (s *scanner) Scan(ctx context.Context, ech chan<- error) <-chan ScannerResult {
 	items := make(chan ScannerResult)
 	go func() {
+		defer s.walker.End()
 		defer close(items)
-		err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+		err := s.walker.Start(s.directory, func(path string, info os.FileInfo, err error) error {
+			logx.As().Debug().Str("path", path).Msg("scanning path")
+
 			if err != nil {
 				if os.IsNotExist(err) {
 					logx.As().Warn().
 						Str("path", path).
 						Str("scanner", s.Info()).
-						Msg("File seems to have been deleted during scan, ignoring error...")
+						Msg("Path doesn't exists, skipping path...")
 					return nil
 				}
 
@@ -66,7 +72,15 @@ func (s *scanner) Scan(ctx context.Context, path string, ech chan<- error) <-cha
 				return err
 			}
 
-			if !info.Mode().IsRegular() || filepath.Ext(path) != s.pattern {
+			ext := filepath.Ext(path)
+			if !info.Mode().IsRegular() || ext != s.pattern {
+				logx.As().Debug().
+					Str("path", path).
+					Str("ext", ext).
+					Str("marker_pattern", s.pattern).
+					Str("mode", info.Mode().String()).
+					Bool("is_regular", info.Mode().IsRegular()).
+					Msg("skipping path")
 				return nil // ignore non-regular files and non-matching extensions
 			}
 
@@ -79,7 +93,7 @@ func (s *scanner) Scan(ctx context.Context, path string, ech chan<- error) <-cha
 
 			select {
 			case items <- ScannerResult{Path: path, Info: info}:
-				logx.As().Info().
+				logx.As().Debug().
 					Str("marker", path).
 					Str("scanner", s.Info()).
 					Msg("Scanner added marker file to the queue")
@@ -92,7 +106,7 @@ func (s *scanner) Scan(ctx context.Context, path string, ech chan<- error) <-cha
 
 		if err != nil {
 			logx.As().Err(err).
-				Str("path", path).
+				Str("directory", s.directory).
 				Str("scanner", s.Info()).
 				Msg("Error in scanner")
 			select {
@@ -105,20 +119,31 @@ func (s *scanner) Scan(ctx context.Context, path string, ech chan<- error) <-cha
 	return items
 }
 
-// NewScanner creates a new instance of the scanner with the specified configuration.
+// NewScanner creates and initializes a new scanner instance.
 //
 // Parameters:
 //   - id: A unique identifier for the scanner instance.
-//   - path: The root directory path where the scanner will start searching for files.
-//   - pattern: The file extension pattern to match during the scan (e.g., ".txt").
+//   - directory: The root directory directory to scan.
+//   - pattern: The file extension pattern to match (e.g., ".txt").
+//   - batchSize: The maximum number of directory entries to read at once.
 //
 // Returns:
 //   - A Scanner instance configured with the provided parameters.
-//   - An error if the scanner could not be created.
+//   - An error if the scanner cannot be initialized.
 //
 // Notes:
-//   - The scanner uses the provided `path` and `pattern` to filter files during the scan process.
-//   - Ensure that the `path` exists and is accessible before using the scanner.
-func NewScanner(id string, path string, pattern string) (Scanner, error) {
-	return &scanner{id: id, path: path, pattern: pattern}, nil
+//   - The scanner uses a Walker to traverse the directory tree.
+//   - The batchSize parameter controls how many directory entries are read in a single operation.
+func NewScanner(id string, rootDir string, pattern string, batchSize int) (Scanner, error) {
+	// if pattern contains '*' or '?', it is not a supported pattern. We only allow extension like .rcd_sig
+	if !config.IsValidExtension(pattern) {
+		return nil, fmt.Errorf("invalid file extension '%s'. use file extension without * or regex characters; i.e. '.rcd.gz'", pattern)
+	}
+
+	return &scanner{
+		id:        id,
+		directory: rootDir,
+		pattern:   pattern,
+		walker:    fsx.NewWalker(batchSize),
+	}, nil
 }

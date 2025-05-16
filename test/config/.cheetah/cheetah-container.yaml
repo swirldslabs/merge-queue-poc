@@ -1,18 +1,28 @@
 log:
   fileLogging: true
   level: Info
-  directory: /app/data/logs
+  directory: /app/logs
   fileName: cheetah.log
   maxSize: 1
   maxBackups: 10
   maxAge: 30
+profiling:
+    enabled: true
+    interval: 5s
+    directory: /app/stats
+    enableServer: true
+    serverHost: 0.0.0.0
+    serverPort: 6060
+    maxSize: 100 # in MB
 pipelines:
   - name: record-stream-uploader
+    stopOnError: true
     scanner:
-      path: /app/data/hgcapp/recordStreams
+      directory: /app/data/hgcapp/recordStreams
       pattern: ".rcd_sig"
       recursive: true
       interval: 100ms
+      batchSize: 1000
     processor: # each processor can upload to multiple storages concurrently or sequentially
       maxProcessors: 10
       fileExtensions: [ ".rcd", ".rcd_sig" ]
@@ -20,7 +30,7 @@ pipelines:
         limit: 5
       storage:
         s3:
-          enabled: false
+          enabled: true
           bucket: cheetah
           region: us-east-1
           prefix: streams/record-streams
@@ -41,16 +51,10 @@ pipelines:
           enabled: true
           path: /app/data/backup/recordStreams
           mode: 0755
-        remoteHost: # not needed, but can be used to store the file remotely if needed
-          enabled: false
-          host: "my-remote-vm"
-          port: 22
-          path: /opt/hgcapp/backup/recordStreams
-          username: "cheetah"
-          password: REMOTE_HOST_PASSWORD # use this env variable
   - name: events-stream-uploader
+    stopOnError: true
     scanner:
-      path: /app/data/hgcapp/eventsStreams
+      directory: /app/data/hgcapp/eventsStreams
       pattern: ".evts_sig"
       recursive: true
       interval: 100ms
@@ -82,10 +86,3 @@ pipelines:
           enabled: true
           path: /app/data/backup/eventsStreams
           mode: 0755
-        remoteHost: # not needed, but can be used to store the file remotely if needed
-          enabled: false
-          host: "my-remote-vm"
-          port: 22
-          path: /opt/hgcapp/backup/eventsStreams
-          username: "cheetah"
-          password: REMOTE_HOST_PASSWORD # use this env variable

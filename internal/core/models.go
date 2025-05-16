@@ -10,7 +10,7 @@ import (
 //
 // Methods:
 //   - Info: Returns a unique identifier or description of the scanner instance.
-//   - Scan: Scans a given path (file or directory) and streams the results through a channel.
+//   - Scan: Scans a given directory and streams the results through a channel.
 //     Errors encountered during the scanning process are sent to an error channel.
 //
 // Notes:
@@ -19,18 +19,17 @@ import (
 //   - The `Scan` method should support context cancellation to allow graceful termination of the scanning process.
 type Scanner interface {
 	Info() string
-	Scan(ctx context.Context, path string, ech chan<- error) <-chan ScannerResult
+	Scan(ctx context.Context, ech chan<- error) <-chan ScannerResult
 }
 
 // ScannerResult represents the result of scanning a file or directory.
 //
 // Fields:
-//   - Path: The path of the file or directory that was scanned.
-//   - Info: The file information (os.FileInfo) associated with the scanned file or directory.
+//   - Path: The path of the file that was found during scan(e.g. marker file).
+//   - Info: The file information (os.FileInfo) associated with the scanned file.
 //
 // Notes:
-//   - This struct is used to communicate the details of a scanned file or directory.
-//   - The `Path` field provides the location of the scanned item, while the `Info` field contains metadata such as size, modification time, etc.
+//   - This struct is used to communicate the details of a matched file during scan.
 type ScannerResult struct {
 	Path string
 	Info os.FileInfo
@@ -89,8 +88,8 @@ type Storage interface {
 //
 // Fields:
 //   - Error: An error encountered during the storage operation, if any.
-//   - Src: The source path of the file being stored.
-//   - Dest: The destination path where the file was stored.
+//   - Src: The source directory of the file.
+//   - Dest: The destination directory of the file.
 //   - Type: The type of storage (e.g., "S3", "Local").
 //   - Handler: The identifier of the uploader used for the storage operation.
 //
@@ -108,8 +107,8 @@ type StorageResult struct {
 // UploadInfo represents metadata about a file upload operation.
 //
 // Fields:
-//   - Src: The source path of the file being uploaded.
-//   - Dest: The destination path where the file was uploaded.
+//   - Src: The source directory of the file being uploaded.
+//   - Dest: The destination directory where the file was uploaded.
 //   - ChecksumType: The type of checksum used (e.g., "md5").
 //   - Checksum: The checksum value of the uploaded file.
 //   - Size: The size of the uploaded file in bytes.

@@ -29,3 +29,13 @@ func ValidateBucketConfig(bucketConfig BucketConfig) error {
 	}
 	return nil
 }
+
+// IsValidExtension ValidateLocalDirConfig validates the local directory configuration.
+// for now, we only support extension begin with dot. We may support glob pattern or regex later
+func IsValidExtension(ext string) bool {
+	if len(ext) > 0 && ext[0] != '.' {
+		return false
+	}
+
+	return true
+}

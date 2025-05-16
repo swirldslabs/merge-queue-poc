@@ -5,6 +5,7 @@ import (
 	"github.com/rs/zerolog/pkgerrors"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"io"
+	"log"
 	"os"
 	"path"
 	"time"
@@ -36,21 +37,15 @@ type LoggingConfig struct {
 	Compress bool
 }
 
-func Initialize(c *LoggingConfig) error {
-	return InitializeWithOptions(c)
+func init() {
+	StartTimer()
+	err := Initialize(&LoggingConfig{ConsoleLogging: true})
+	if err != nil {
+		log.Fatalf("failed to initialize logging: %v", err)
+	}
 }
 
-func newRollingFile(cfg *LoggingConfig) (io.Writer, error) {
-	return &lumberjack.Logger{
-		Filename:   path.Join(cfg.Directory, cfg.Filename),
-		MaxBackups: cfg.MaxBackups, // files
-		MaxSize:    cfg.MaxSize,    // megabytes
-		MaxAge:     cfg.MaxAge,     // days
-		Compress:   cfg.Compress,
-	}, nil
-}
-
-func InitializeWithOptions(cfg *LoggingConfig) error {
+func Initialize(cfg *LoggingConfig) error {
 	l, err := zerolog.ParseLevel(cfg.Level)
 	if err != nil {
 		return err
@@ -99,4 +94,14 @@ func ExecutionTime() string {
 
 func GetPid() int {
 	return pid
+}
+
+func newRollingFile(cfg *LoggingConfig) (io.Writer, error) {
+	return &lumberjack.Logger{
+		Filename:   path.Join(cfg.Directory, cfg.Filename),
+		MaxBackups: cfg.MaxBackups, // files
+		MaxSize:    cfg.MaxSize,    // megabytes
+		MaxAge:     cfg.MaxAge,     // days
+		Compress:   cfg.Compress,
+	}, nil
 }

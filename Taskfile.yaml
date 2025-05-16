@@ -5,6 +5,16 @@ vars:
   OutputName: "cheetah-$GOOS-$GOARCH$BINARY_FILE_EXT"
   LinkerFlags: "-w -s"
   BuildCommand: "go build -ldflags='{{.LinkerFlags}}' -o build/cheetah-$GOOS-$GOARCH$BINARY_FILE_EXT ./cmd/cheetah"
+  TempDir: "/tmp/solo-cheetah"
+  TempDataDir: "/tmp/solo-cheetah/data"
+  TempBackupDir: "/tmp/solo-cheetah/data/backup"
+  TempConfigDir: "/tmp/solo-cheetah/config"
+  TempLogsDir: "/tmp/solo-cheetah/logs"
+  TempStatsDir: "/tmp/solo-cheetah/stats"
+  TempRecordStreamsDir: "/tmp/solo-cheetah/data/hgcapp/recordStreams"
+  TempEventsStreamsDir: "/tmp/solo-cheetah/data/hgcapp/eventsStreams"
+  TempBackupRecordStreamsDir: "/tmp/solo-cheetah/data/backup/recordStreams"
+  TempBackupEventsStreamsDir: "/tmp/solo-cheetah/data/backup/eventsStreams"
 tasks:
   clean:
     cmds:
@@ -41,23 +51,59 @@ tasks:
 
   run:image:
     cmds:
-      - "docker run -it -v $(PWD)/test/config:/app/config -v $(PWD)/test/data:/app/data solo-cheetah upload --config /app/config/.cheetah/cheetah.yaml"
+      - "mkdir -p {{.TempDir}}"
+      - "mkdir -p {{.TempDataDir}}"
+      - "mkdir -p {{.TempBackupDir}}"
+      - "mkdir -p {{.TempConfigDir}}"
+      - "mkdir -p {{.TempLogsDir}}"
+      - "mkdir -p {{.TempStatsDir}}"
+      - "mkdir -p {{.TempRecordStreamsDir}}"
+      - "mkdir -p {{.TempEventsStreamsDir}}"
+      - "time docker run -it \
+      -v $(PWD)/test/config:/app/config \
+      -v {{.TempDataDir}}:/app/data \
+      -v {{.TempLogsDir}}:/app/logs \
+      -v {{.TempStatsDir}}:/app/stats \
+      -p 6060:6060 \
+      solo-cheetah upload --config /app/config/.cheetah/cheetah-container.yaml"
+
+  run:image-once:
+    cmds:
+      - "mkdir -p {{.TempDir}}"
+      - "mkdir -p {{.TempDataDir}}"
+      - "mkdir -p {{.TempBackupDir}}"
+      - "mkdir -p {{.TempConfigDir}}"
+      - "mkdir -p {{.TempLogsDir}}"
+      - "mkdir -p {{.TempStatsDir}}"
+      - "mkdir -p {{.TempRecordStreamsDir}}"
+      - "mkdir -p {{.TempEventsStreamsDir}}"
+      - "time docker run -it \
+      -v $(PWD)/test/config:/app/config \ 
+      -v {{.TempDataDir}}:/app/data \
+      -v {{.TempLogsDir}}:/app/logs \
+      -v {{.TempStatsDir}}:/app/stats \
+      -p 6060:6060 \
+      solo-cheetah upload --config /app/config/.cheetah/cheetah-container.yaml --poll=false"
 
   run:gen-record-streams: # for testing
     cmds:
-      - "test/scripts/gen.sh test/data/hgcapp/recordStreams rcd_sig rcd 10 0.1 1000"
+      - "mkdir -p {{.TempRecordStreamsDir}}"
+      - "test/scripts/gen.sh {{.TempRecordStreamsDir}} rcd_sig rcd 100 0.1 600 100"
 
   run:gen-events-streams: # for testing
     cmds:
-      - "test/scripts/gen.sh test/data/hgcapp/eventsStreams evts_sig evts 10 0.1 1000"
+      - "mkdir -p {{.TempEventsStreamsDir}}"
+      - "test/scripts/gen.sh {{.TempEventsStreamsDir}} evts_sig rcd 100 0.1 300 100"
 
   run:cleanup-record-streams: # for testing
     cmds:
-      - "./test/scripts/clean.sh test/data/backup/recordStreams 10000 0.2"
+      - "mkdir -p {{.TempBackupRecordStreamsDir}}"
+      - "./test/scripts/clean.sh {{.TempBackupRecordStreamsDir}} 10000 0.2"
 
   run:cleanup-events-streams: # for testing
     cmds:
-      - "./test/scripts/clean.sh test/data/backup/eventsStreams 10000 0.2"
+      - "mkdir -p {{.TempBackupEventsStreamsDir}}"
+      - "./test/scripts/clean.sh {{.TempBackupEventsStreamsDir}} 10000 0.2"
 
   build:cheetah:linux:amd64:
     env:
@@ -142,6 +188,7 @@ tasks:
   install:go:
     deps:
       - "install:go:linux"
+
 
   install:go:linux:
     status:

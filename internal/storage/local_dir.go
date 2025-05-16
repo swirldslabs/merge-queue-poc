@@ -27,7 +27,7 @@ func (d *localDirectoryHandler) ensureDirExists(ctx context.Context) error {
 		return nil
 	}
 
-	logx.As().Info().
+	logx.As().Debug().
 		Str("storage_type", d.Type()).
 		Str("path", d.dirConfig.Path).
 		Msg("Directory does not exist, creating it")
@@ -41,7 +41,7 @@ func (d *localDirectoryHandler) ensureDirExists(ctx context.Context) error {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	logx.As().Info().
+	logx.As().Debug().
 		Str("storage_type", d.Type()).
 		Str("path", d.dirConfig.Path).
 		Msg("Directory created successfully")
@@ -82,7 +82,7 @@ func (d *localDirectoryHandler) syncWithDir(ctx context.Context, src string, des
 		}
 
 		if localChecksum == remoteChecksum {
-			logx.As().Info().
+			logx.As().Debug().
 				Str("src", src).
 				Str("dest", destPath).
 				Str("md5", remoteChecksum).
@@ -92,7 +92,24 @@ func (d *localDirectoryHandler) syncWithDir(ctx context.Context, src string, des
 		}
 	}
 
-	logx.As().Info().
+	destDir := filepath.Dir(destPath)
+	if _, exists := fsx.PathExists(destDir); !exists {
+		logx.As().Debug().
+			Str("storage_type", d.Type()).
+			Str("path", destDir).
+			Msg("Destination directory does not exist, creating it")
+
+		if err := os.MkdirAll(destDir, d.dirConfig.Mode); err != nil {
+			logx.As().Error().
+				Str("storage_type", d.Type()).
+				Str("path", destDir).
+				Err(err).
+				Msg("Failed to create destination directory")
+			return nil, fmt.Errorf("failed to create destination directory: %w", err)
+		}
+	}
+
+	logx.As().Debug().
 		Str("src", src).
 		Str("dest", destPath).
 		Str("checksum", localChecksum).
@@ -131,12 +148,13 @@ func (d *localDirectoryHandler) prepareUploadInfo(src string, dest string, check
 }
 
 // NewLocalDir creates a new local directory storage handler.
-func NewLocalDir(id string, config config.LocalDirConfig, retryConfig config.RetryConfig, fileExtensions []string) (core.Storage, error) {
+func NewLocalDir(id string, config config.LocalDirConfig, retryConfig config.RetryConfig, rootDir string, fileExtensions []string) (core.Storage, error) {
 	l := &localDirectoryHandler{
 		handler: &handler{
 			id:             id,
 			storageType:    TypeLocalDir,
 			fileExtensions: fileExtensions,
+			rootDir:        rootDir,
 		},
 		dirConfig:   config,
 		retryConfig: retryConfig,

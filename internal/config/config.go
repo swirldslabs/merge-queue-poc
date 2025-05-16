@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/spf13/viper"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
+	"golang.hedera.com/solo-cheetah/pkg/sniff"
 	"os"
 )
 
@@ -13,6 +14,8 @@ type Config struct {
 	Log *logx.LoggingConfig
 	// Pipelines is a list of pipeline configurations.
 	Pipelines []*PipelineConfig
+	// Stats contains the statistics configuration.
+	Profiling *sniff.ProfilingConfig
 }
 
 // PipelineConfig holds the configuration for a single pipeline.
@@ -25,18 +28,22 @@ type PipelineConfig struct {
 	Scanner *ScannerConfig
 	// Processor contains the processor configuration.
 	Processor *ProcessorConfig
+	// StopOnError indicates whether to stop the pipeline on error. We can ignore errors with the hope that the next run will succeed.
+	StopOnError bool
 }
 
 // ScannerConfig holds the configuration for the scanner.
 type ScannerConfig struct {
-	// Path is the directory to scan.
-	Path string
-	// Pattern is the file pattern to match.
+	// Directory is the directory to scan.
+	Directory string
+	// Pattern is the file extension pattern to match.
 	Pattern string
 	// Recursive enables recursive scanning of directories.
 	Recursive bool
 	// Interval specifies the scan interval (e.g., "5m").
 	Interval string
+	// BatchSize is the number of files to process in a batch.
+	BatchSize int
 }
 
 // ProcessorConfig holds the configuration for the processor.
@@ -63,8 +70,6 @@ type StorageConfig struct {
 	S3 *BucketConfig
 	// GCS contains the Google Cloud Storage bucket configuration.
 	GCS *BucketConfig
-	// RemoteHost contains the remote host configuration.
-	RemoteHost *RemoteHostConfig
 	// LocalDir contains the local directory configuration.
 	LocalDir *LocalDirConfig
 }
@@ -89,22 +94,6 @@ type BucketConfig struct {
 	UseSSL bool
 }
 
-// RemoteHostConfig holds the configuration for a remote host.
-type RemoteHostConfig struct {
-	// Enabled indicates whether the remote host is enabled.
-	Enabled bool
-	// Host is the hostname or IP address of the remote host.
-	Host string
-	// Port is the port number of the remote host.
-	Port int
-	// Path is the path on the remote host.
-	Path string
-	// Username is the username for authentication.
-	Username string
-	// Password is the password for authentication.
-	Password string
-}
-
 // LocalDirConfig holds the configuration for a local directory.
 type LocalDirConfig struct {
 	// Enabled indicates whether the local directory is enabled.
@@ -122,6 +111,9 @@ var config = Config{
 		FileLogging:    false,
 	},
 	Pipelines: []*PipelineConfig{},
+	Profiling: &sniff.ProfilingConfig{
+		Enabled: false,
+	},
 }
 
 // Initialize loads the configuration from the specified file.
@@ -169,9 +161,6 @@ func initializeNestedStructs() {
 		if pipeline.Processor.Storage.GCS == nil {
 			pipeline.Processor.Storage.GCS = &BucketConfig{}
 		}
-		if pipeline.Processor.Storage.RemoteHost == nil {
-			pipeline.Processor.Storage.RemoteHost = &RemoteHostConfig{}
-		}
 		if pipeline.Processor.Storage.LocalDir == nil {
 			pipeline.Processor.Storage.LocalDir = &LocalDirConfig{}
 		}
@@ -202,4 +191,8 @@ func overrideWithEnvVars() {
 //   - The global configuration.
 func Get() Config {
 	return config
+}
+
+func Set(c *Config) {
+	config = *c
 }

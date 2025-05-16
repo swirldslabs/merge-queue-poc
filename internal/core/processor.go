@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"golang.hedera.com/solo-cheetah/internal/config"
 	"golang.hedera.com/solo-cheetah/pkg/fsx"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"os"
@@ -98,7 +99,7 @@ func (p *processor) upload(ctx context.Context, items <-chan ScannerResult) <-ch
 					Result: make(map[string]*StorageResult),
 				}
 
-				logx.As().Info().Str("marker", item.Path).Msg("Processor processing marker file")
+				logx.As().Debug().Str("marker", item.Path).Msg("Processor processing marker file")
 
 				// parallel upload
 				var wg sync.WaitGroup
@@ -190,11 +191,7 @@ func (p *processor) remove(ctx context.Context, stored <-chan ProcessorResult) <
 					continue // skip file removal if there was an error
 				}
 
-				var removalCandidates []string
-				dir, fileName, _ := fsx.SplitFilePath(resp.Path)
-				for _, ext := range p.fileExtensions {
-					removalCandidates = append(removalCandidates, fsx.CombineFilePath(dir, fileName, ext))
-				}
+				removalCandidates := p.prepareRemovalCandidates(resp)
 
 				logx.As().Info().
 					Str("marker", resp.Path).
@@ -224,7 +221,34 @@ func (p *processor) remove(ctx context.Context, stored <-chan ProcessorResult) <
 	return sch
 }
 
+func (p *processor) prepareRemovalCandidates(resp ProcessorResult) []string {
+	uniqueCandidates := make(map[string]bool)
+	uniqueCandidates[resp.Path] = true
+
+	dir, fileName, _ := fsx.SplitFilePath(resp.Path)
+	for _, ext := range p.fileExtensions {
+		path := fsx.CombineFilePath(dir, fileName, ext)
+		uniqueCandidates[path] = true
+	}
+
+	var removalCandidates []string
+	for path := range uniqueCandidates {
+		removalCandidates = append(removalCandidates, path)
+	}
+
+	return removalCandidates
+}
+
 func NewProcessor(id string, storages []Storage, fileExtensions []string) (Processor, error) {
+	// if pattern contains '*' or '?' in fileExtensions, it is not a supported pattern. We only allow extension like .rcd_sig without * or ?
+	if len(fileExtensions) > 0 {
+		for _, ext := range fileExtensions {
+			if !config.IsValidExtension(ext) {
+				return nil, fmt.Errorf("invalid file extension '%s'. use file extension without * or regex characters; i.e. '.rcd.gz'", ext)
+			}
+		}
+	}
+
 	return &processor{
 		id:             id,
 		storages:       storages,

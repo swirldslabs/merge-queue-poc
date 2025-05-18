@@ -1,10 +1,11 @@
 version: 3
 silent: false
+output: prefixed
 vars:
-  GoVersion: 1.22.1
-  OutputName: "cheetah-$GOOS-$GOARCH$BINARY_FILE_EXT"
-  LinkerFlags: "-w -s"
-  BuildCommand: "go build -ldflags='{{.LinkerFlags}}' -o build/cheetah-$GOOS-$GOARCH$BINARY_FILE_EXT ./cmd/cheetah"
+  OS: [ linux, darwin ]
+  ARCH: [ amd64, arm64 ]
+  GO_VERSION: 1.24.3
+  LDFLAGS: "-w -s"
   TempDir: "/tmp/solo-cheetah"
   TempDataDir: "/tmp/solo-cheetah/data"
   TempBackupDir: "/tmp/solo-cheetah/data/backup"
@@ -18,9 +19,9 @@ vars:
 tasks:
   clean:
     cmds:
-      - "rm -rf build"
+      - "rm -rf bin"
       - "rm -f unit-test-report.md"
-      - "mkdir -p build"
+      - "mkdir -p bin"
       - "go clean -cache -testcache"
 
   vendor:
@@ -39,11 +40,14 @@ tasks:
     deps:
       - "vendor"
     cmds:
-      - task: "build:cheetah:linux:amd64"
-      - task: "build:cheetah:linux:arm64"
-      - task: "build:cheetah:darwin:amd64"
-      - task: "build:cheetah:darwin:arm64"
-      - task: "build:permissions"
+      - task: "generate"
+      - task: "build:cheetah:all"
+
+  sign:
+    deps:
+      - "build"
+    cmds:
+      - task: "sign:cheetah:all"
 
   build:image:
     cmds:
@@ -93,7 +97,7 @@ tasks:
   run:gen-events-streams: # for testing
     cmds:
       - "mkdir -p {{.TempEventsStreamsDir}}"
-      - "test/scripts/gen.sh {{.TempEventsStreamsDir}} evts_sig rcd 100 0.1 300 100"
+      - "test/scripts/gen.sh {{.TempEventsStreamsDir}} evts_sig evts 100 0.1 300 100"
 
   run:cleanup-record-streams: # for testing
     cmds:
@@ -105,63 +109,102 @@ tasks:
       - "mkdir -p {{.TempBackupEventsStreamsDir}}"
       - "./test/scripts/clean.sh {{.TempBackupEventsStreamsDir}} 10000 0.2"
 
-  build:cheetah:linux:amd64:
-    env:
-      GOOS: "linux"
-      GOARCH: "amd64"
-      BINARY_FILE_EXT: ""
+  generate:
     cmds:
-      - "{{.BuildCommand}}"
-    sources:
-      - "**/*.go"
-    generates:
-      - "{{.OutputName}}"
+      - "go generate ./..."
 
-  build:cheetah:linux:arm64:
-    env:
-      GOOS: "linux"
-      GOARCH: "arm64"
-      BINARY_FILE_EXT: ""
+  build:cheetah:all:
+    desc: "Build the Cheetah daemon for all configured operating systems and architectures"
     cmds:
-      - "{{.BuildCommand}}"
-    sources:
-      - "**/*.go"
-    generates:
-      - "{{.OutputName}}"
+      - task: build:cheetah:all:os
 
-  build:cheetah:darwin:amd64:
-    env:
-      GOOS: "darwin"
-      GOARCH: "amd64"
-      BINARY_FILE_EXT: ""
+  build:cheetah:all:os:
+    internal: true
+    desc: "Build the Cheetah daemon for all configured operating systems"
     cmds:
-      - "{{.BuildCommand}}"
-    sources:
-      - "**/*.go"
-    generates:
-      - "{{.OutputName}}"
+      - for:
+          var: OS
+        task: build:cheetah:all:arch
+        vars:
+          GOOS: "{{.ITEM}}"
 
-  build:cheetah:darwin:arm64:
-    env:
-      GOOS: "darwin"
-      GOARCH: "arm64"
-      BINARY_FILE_EXT: ""
+  build:cheetah:all:arch:
+    internal: true
+    desc: "Build the Cheetah daemon for all configured architectures"
     cmds:
-      - "{{.BuildCommand}}"
-    sources:
-      - "**/*.go"
-    generates:
-      - "{{.OutputName}}"
+      - for:
+          var: ARCH
+        task: build:cheetah
+        vars:
+          GOOS: "{{.GOOS}}"
+          GOARCH: "{{.ITEM}}"
 
-  build:permissions:
+  build:cheetah:
+    internal: true
+    desc: "Build the Cheetah daemon for the specified operating system and architecture"
+    env:
+      GOOS: "{{coalesce .GOOS OS}}"
+      GOARCH: "{{coalesce .GOARCH ARCH}}"
     cmds:
-      - "chmod +x build/*"
+      - cmd: go build -ldflags='{{.LDFLAGS}}' -trimpath -o bin/cheetah-{{coalesce .GOOS OS}}-{{coalesce .GOARCH ARCH}} ./cmd/cheetah
+      - cmd: chmod +x bin/cheetah-{{coalesce .GOOS OS}}-{{coalesce .GOARCH ARCH}}
+
+  hash:cheetah:
+    internal: true
+    desc: "Hash the Cheetah daemon binaries for the specified operating system and architecture"
+    env:
+      GOOS: "{{.GOOS}}"
+      GOARCH: "{{.GOARCH}}"
+    cmds:
+      - cmd: sha256sum bin/cheetah-{{.GOOS}}-{{.GOARCH}} > bin/cheetah-{{.GOOS}}-{{.GOARCH}}.sha256
+
+  sign:cheetah:all:
+    desc: "Sign the Cheetah daemon binaries for all configured operating systems and architectures"
+    cmds:
+      - task: sign:cheetah:all:os
+
+  sign:cheetah:all:os:
+    internal: true
+    desc: "Sign the Cheetah daemon binaries for all configured operating systems"
+    cmds:
+      - for:
+          var: OS
+        task: sign:cheetah:all:arch
+        vars:
+          GOOS: "{{.ITEM}}"
+
+  sign:cheetah:all:arch:
+    internal: true
+    desc: "Sign the Cheetah daemon binaries for all configured architectures"
+    cmds:
+      - for:
+          var: ARCH
+        task: sign:cheetah
+        vars:
+          GOOS: "{{.GOOS}}"
+          GOARCH: "{{.ITEM}}"
+
+  sign:cheetah:
+    internal: true
+    desc: "Sign the Cheetah daemon binaries for the specified operating system and architecture"
+    env:
+      GOOS: "{{coalesce .GOOS OS}}"
+      GOARCH: "{{coalesce .GOARCH ARCH}}"
+    cmds:
+      - task: hash:cheetah
+        vars:
+          GOOS: "{{.GOOS}}"
+          GOARCH: "{{.GOARCH}}"
+      - cmd: gpg --batch --yes --armor --output bin/cheetah-{{.GOOS}}-{{.GOARCH}}.sha256.asc --detach-sign bin/cheetah-{{.GOOS}}-{{.GOARCH}}.sha256
+      - cmd: gpg --batch --yes --armor --output bin/cheetah-{{.GOOS}}-{{.GOARCH}}.asc --detach-sign bin/cheetah-{{.GOOS}}-{{.GOARCH}}
 
   test:
     cmds:
       - task: "test:unit"
 
   test:unit:
+    deps:
+      - "generate"
     cmds:
       # Using go-testreport v0.3.2
       - "go install github.com/becheran/go-testreport@90efc1ce13c872f23d6bc8a069527c26288b8f9c"
@@ -175,7 +218,7 @@ tasks:
     deps:
       - "build"
     cmds:
-      - "build/cheetah-{{OS}}-{{ARCH}}{{exeExt}} {{.CLI_ARGS}}"
+      - "bin/cheetah-{{OS}}-{{ARCH}}{{exeExt}} {{.CLI_ARGS}}"
 
   run:cheetah:skipdl:
     deps:
@@ -183,24 +226,24 @@ tasks:
     env:
       CHEETAH_LOG_LEVEL: "Debug"
     cmds:
-      - "build/cheetah-{{OS}}-{{ARCH}}{{exeExt}} {{.CLI_ARGS}}"
+      - "bin/cheetah-{{OS}}-{{ARCH}}{{exeExt}} {{.CLI_ARGS}}"
 
   install:go:
     deps:
       - "install:go:linux"
 
-
   install:go:linux:
+    internal: true
     status:
       - "command -v go"
     platforms:
       - "linux/amd64"
       - "linux/arm64"
     cmds:
-      - "curl -sSLO https://go.dev/dl/go{{.GoVersion}}.{{OS}}-{{ARCH}}.tar.gz"
+      - "curl -sSLO https://go.dev/dl/go{{.GO_VERSION}}.{{OS}}-{{ARCH}}.tar.gz"
       - "sudo mkdir -p /usr/local/go"
-      - "sudo tar -C /usr/local -xzf go{{.GoVersion}}.{{OS}}-{{ARCH}}.tar.gz"
-      - "rm -f go{{.GoVersion}}.{{OS}}-{{ARCH}}.tar.gz"
+      - "sudo tar -C /usr/local -xzf go{{.GO_VERSION}}.{{OS}}-{{ARCH}}.tar.gz"
+      - "rm -f go{{.GO_VERSION}}.{{OS}}-{{ARCH}}.tar.gz"
       - "echo 'PATH=\"${PATH}:/usr/local/go/bin\"' | sudo tee /etc/profile.d/go.sh >/dev/null 2>&1"
       - "source /etc/profile.d/go.sh"
     generates:

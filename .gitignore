@@ -473,3 +473,5 @@ unit-test-report.md
 test/data/stats
 *.out
 test/stats
+internal/version/COMMIT
+internal/version/VERSION

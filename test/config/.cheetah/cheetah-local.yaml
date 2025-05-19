@@ -7,13 +7,13 @@ log:
   maxBackups: 10
   maxAge: 30
 profiling:
-    enabled: true
-    interval: 5s
-    directory: test/stats
-    enableServer: true
-    serverHost: 127.0.0.1
-    serverPort: 6060
-    maxSize: 100 # in MB
+  enabled: true
+  interval: 5s
+  directory: test/stats
+  enableServer: true
+  serverHost: 127.0.0.1
+  serverPort: 6060
+  maxSize: 100 # in MB
 #metrics: # TODO
 #    enabled: true
 #    interval: 5s

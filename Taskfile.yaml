@@ -53,6 +53,10 @@ tasks:
     cmds:
       - "docker build -t solo-cheetah ."
 
+  run:minio-local:
+    cmds:
+      - "docker run --rm -p 9000:9000 -p 9001:9001 --name minio -e \"MINIO_ROOT_USER=solo-cheetah\" -e \"MINIO_ROOT_PASSWORD=changeme\" minio/minio server /data --console-address :9001"
+
   run:image:
     cmds:
       - "mkdir -p {{.TempDir}}"
@@ -68,26 +72,12 @@ tasks:
       -v {{.TempDataDir}}:/app/data \
       -v {{.TempLogsDir}}:/app/logs \
       -v {{.TempStatsDir}}:/app/stats \
+      -e S3_ACCESS_KEY=${S3_ACCESS_KEY} \
+      -e S3_SECRET_KEY=${S3_SECRET_KEY} \
+      -e GCS_ACCESS_KEY=${GCS_ACCESS_KEY} \
+      -e GCS_SECRET_KEY=${GCS_SECRET_KEY} \
       -p 6060:6060 \
       solo-cheetah upload --config /app/config/.cheetah/cheetah-container.yaml"
-
-  run:image-once:
-    cmds:
-      - "mkdir -p {{.TempDir}}"
-      - "mkdir -p {{.TempDataDir}}"
-      - "mkdir -p {{.TempBackupDir}}"
-      - "mkdir -p {{.TempConfigDir}}"
-      - "mkdir -p {{.TempLogsDir}}"
-      - "mkdir -p {{.TempStatsDir}}"
-      - "mkdir -p {{.TempRecordStreamsDir}}"
-      - "mkdir -p {{.TempEventsStreamsDir}}"
-      - "time docker run -it \
-      -v $(PWD)/test/config:/app/config \ 
-      -v {{.TempDataDir}}:/app/data \
-      -v {{.TempLogsDir}}:/app/logs \
-      -v {{.TempStatsDir}}:/app/stats \
-      -p 6060:6060 \
-      solo-cheetah upload --config /app/config/.cheetah/cheetah-container.yaml --poll=false"
 
   run:gen-record-streams: # for testing
     cmds:

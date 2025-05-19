@@ -27,24 +27,20 @@ To build the project using `Taskfile.yml`, follow these steps:
    cd solo-cheetah
    ```
 
-2. Build the project and Docker image:
+2. Build the executables:
    ```bash
-   task build:image
+   task build
    ```
-
-This will compile the project and generate the executable in the `bin/` directory. It will also build a Docker image named `solo-cheetah` with the latest tag.
+This will compile the project and generate the executable for various OS and ARCH in the `bin/` directory. 
 
 ---
 
 ## Running the Project
 To run the project, use the following commands:
 
-1. Setup MinIO (in separate terminal):
+1. Optional: Setup MinIO (in separate terminal):
 ```bash 
-docker run --rm -p 9000:9000 -p 9001:9001 --name minio \
-  -e "MINIO_ROOT_USER=solo-cheetah" \
-  -e "MINIO_ROOT_PASSWORD=changeme" \
-  minio/minio server /data --console-address ":9001"
+  task run:minio-local
 ```
 This will start a MinIO server on `localhost:9000` and the console on `localhost:9001`.
 You can access the MinIO console at `http://localhost:9001` using the credentials.
@@ -57,17 +53,17 @@ You can access the MinIO console at `http://localhost:9001` using the credential
    export GCS_SECRET_KEY=changeme     # Set your GCS secret key
    ```
 
-3. Run the Docker container:
+3. Run cheetah
    ```bash
-   task run:image
+   task run -- upload --config test/config/.cheetah/cheetah-local.yaml
    ```
 
-This will start the application using the default configuration file located at `test/config/.cheetah/cheetah-container.yaml`.
+This will start the application using the default configuration file located at `test/config/.cheetah/cheetah-local.yaml`.
 
 ---
 
 ## Configuration
-`solo-cheetah` uses a configuration file to define pipelines, storage backends, and other settings. The configuration file can be specified using `--config` flag. Below is an example configuration (see the full example in `test/config/.cheetah/cheetah-container.yaml`):
+`solo-cheetah` uses a configuration file to define pipelines, storage backends, and other settings. The configuration file can be specified using `--config` flag. Below is an example configuration (see the latest file in `test/config/.cheetah/cheetah-local.yaml`):
 
 ```yaml
 log:
@@ -79,13 +75,13 @@ log:
   maxBackups: 10
   maxAge: 30
 profiling:
-    enabled: true
-    interval: 5s
-    directory: /app/stats
-    enableServer: true
-    serverHost: 0.0.0.0
-    serverPort: 6060
-    maxSize: 100 # in MB
+  enabled: true
+  interval: 5s
+  directory: /app/stats
+  enableServer: true
+  serverHost: 0.0.0.0
+  serverPort: 6060
+  maxSize: 100 # in MB
 pipelines:
   - name: record-stream-uploader
     scanner:

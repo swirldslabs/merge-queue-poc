@@ -7,13 +7,13 @@ log:
   maxBackups: 10
   maxAge: 30
 profiling:
-    enabled: true
-    interval: 5s
-    directory: /app/stats
-    enableServer: true
-    serverHost: 0.0.0.0
-    serverPort: 6060
-    maxSize: 100 # in MB
+  enabled: true
+  interval: 5s
+  directory: /app/stats
+  enableServer: true
+  serverHost: 0.0.0.0
+  serverPort: 6060
+  maxSize: 100 # in MB
 pipelines:
   - name: record-stream-uploader
     stopOnError: true
@@ -30,11 +30,11 @@ pipelines:
         limit: 5
       storage:
         s3:
-          enabled: true
+          enabled: false
           bucket: cheetah
           region: us-east-1
           prefix: streams/record-streams
-          endpoint: localhost:9000
+          endpoint: 0.0.0.0:9000
           accessKey: S3_ACCESS_KEY # use this env variable
           secretKey: S3_SECRET_KEY # use this env variable
           useSsl: false

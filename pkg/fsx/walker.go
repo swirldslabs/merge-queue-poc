@@ -83,21 +83,25 @@ func (w *Walker) Start(root string, fn filepath.WalkFunc) error {
 //   - It is similar to filepath.walk, but uses a custom readDirEntries method to limit the number of entries read at once.
 func (w *Walker) walk(path string, info fs.FileInfo, walkFn filepath.WalkFunc) error {
 	if !info.IsDir() {
+		// If the current path is not a directory, call the WalkFunc and return
 		return walkFn(path, info, nil)
+	}
+
+	// visit the root directory once before reading its entries
+	err := walkFn(path, info, nil)
+	if err != nil {
+		return err
 	}
 
 	for {
 		names, err := w.readDirEntries(path, w.batchSize)
-
-		// Call the walkFn with the directory info including any error during reading the directory entries
-		err1 := walkFn(path, info, err)
-
-		// Handle errors from directory reading or callback function
-		// If err is not nil, it indicates an error reading the directory so we should stop
-		// If err1 is not nil, it indicates an error from the walkFn callback, so we should stop as well
-		if err != nil || err1 != nil {
-			// return whatever walkFn returns on error
-			return err1
+		if err != nil {
+			// If there is an error, ask the WalkFunc to handle it
+			err1 := walkFn(path, info, err)
+			if err1 != nil {
+				// return whatever walkFn returns on error
+				return err1
+			}
 		}
 
 		// No more entries to read, break the loop

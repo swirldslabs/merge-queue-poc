@@ -28,7 +28,7 @@ func (s *scanner) Info() string {
 	return s.id
 }
 
-// Scan traverses the specified directory directory to find files matching the configured pattern.
+// Scan traverses the specified directory to find files matching the configured pattern.
 // It streams the results of the scan through a channel and sends any errors encountered to the provided error channel.
 //
 // Parameters:
@@ -135,6 +135,10 @@ func (s *scanner) Scan(ctx context.Context, ech chan<- error) <-chan ScannerResu
 //   - The scanner uses a Walker to traverse the directory tree.
 //   - The batchSize parameter controls how many directory entries are read in a single operation.
 func NewScanner(id string, rootDir string, pattern string, batchSize int) (Scanner, error) {
+	return newScanner(id, rootDir, pattern, batchSize)
+}
+
+func newScanner(id string, rootDir string, pattern string, batchSize int) (*scanner, error) {
 	// if pattern contains '*' or '?', it is not a supported pattern. We only allow extension like .rcd_sig
 	if !config.IsValidExtension(pattern) {
 		return nil, fmt.Errorf("invalid file extension '%s'. use file extension without * or regex characters; i.e. '.rcd.gz'", pattern)

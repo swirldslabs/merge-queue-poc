@@ -11,7 +11,7 @@ profiling:
     interval: 5s
     directory: test/stats
     enableServer: true
-    serverHost: localhost
+    serverHost: 127.0.0.1
     serverPort: 6060
     maxSize: 100 # in MB
 #metrics: # TODO
@@ -27,7 +27,7 @@ pipelines:
       interval: 100ms
       batchSize: 1000
     processor: # each processor can upload to multiple storages concurrently or sequentially
-      maxProcessors: 10
+      maxProcessors: 20
       fileExtensions: [ ".rcd", ".rcd_sig" ]
       retry:
         limit: 5

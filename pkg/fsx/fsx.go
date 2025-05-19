@@ -82,7 +82,9 @@ func CloseFile(file *os.File) {
 	}
 
 	if err := file.Close(); err != nil {
-		fmt.Printf("warning: failed to close file: %v\n", err)
+		if !errors.Is(err, os.ErrClosed) {
+			fmt.Printf("WARNING: failed to close file: %v\n", err)
+		}
 	}
 }
 

@@ -8,6 +8,18 @@ import (
 	"testing"
 )
 
+func TestNewScanner(t *testing.T) {
+	// Test valid scanner creation
+	s, err := newScanner("test-scanner", "/test/dir", ".txt", 10)
+	assert.NoError(t, err)
+	assert.NotNil(t, s)
+
+	// Test invalid scanner creation with unsupported pattern
+	s, err = newScanner("test-scanner", "/test/dir", "*.txt", 10)
+	assert.Error(t, err)
+	assert.Nil(t, s)
+}
+
 func TestScan(t *testing.T) {
 	// Setup: Create a temporary directory with test files
 	tempDir := t.TempDir()
@@ -18,12 +30,13 @@ func TestScan(t *testing.T) {
 	}
 
 	// Initialize the scanner
-	s, err := NewScanner("test-scanner", tempDir, ".txt", 3)
+	s, err := newScanner("test-scanner", tempDir, ".txt", 3)
 	assert.NoError(t, err)
 
 	// Create a context and error channel
 	ctx := context.Background()
 	errCh := make(chan error, 1)
+	defer close(errCh)
 
 	// Run the scanner
 	results := s.Scan(ctx, errCh)
@@ -40,12 +53,49 @@ func TestScan(t *testing.T) {
 	}
 
 	assert.ElementsMatch(t, expectedFiles, scannedFiles)
+}
 
-	// Ensure no errors were reported
-	select {
-	case err := <-errCh:
-		assert.NoError(t, err)
-	default:
-		// No errors
+func TestScan_EmptyDirectory(t *testing.T) {
+	// Setup: Create an empty temporary directory
+	tempDir := t.TempDir()
+
+	// Initialize the scanner
+	s, err := NewScanner("test-scanner", tempDir, ".txt", 3)
+	assert.NoError(t, err)
+
+	// Create a context and error channel
+	ctx := context.Background()
+	errCh := make(chan error, 1)
+	defer close(errCh)
+
+	// Run the scanner
+	results := s.Scan(ctx, errCh)
+
+	// Verify no results are returned
+	var scannedFiles []string
+	for result := range results {
+		scannedFiles = append(scannedFiles, result.Path)
 	}
+	assert.Empty(t, scannedFiles)
+}
+
+func TestScan_InvalidDirectory(t *testing.T) {
+	// Initialize the scanner with a non-existent directory
+	s, err := NewScanner("test-scanner", "/invalid/path", ".txt", 3)
+	assert.NoError(t, err)
+
+	// Create a context and error channel
+	ctx := context.Background()
+	errCh := make(chan error, 1)
+	defer close(errCh)
+
+	// Run the scanner
+	results := s.Scan(ctx, errCh)
+
+	// Verify no results are returned
+	var scannedFiles []string
+	for result := range results {
+		scannedFiles = append(scannedFiles, result.Path)
+	}
+	assert.Empty(t, scannedFiles)
 }

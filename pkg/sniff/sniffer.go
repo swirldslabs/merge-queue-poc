@@ -23,15 +23,16 @@ var (
 type Sniffer struct {
 	opts             *ProfilingConfig
 	nextRotationHour *time.Time
-	done             chan struct{}
 	lastSnapshot     *Stats
+	ctx              context.Context
+	cancel           context.CancelFunc
+	mu               sync.Mutex
 }
 
 func New(opts ProfilingConfig) *Sniffer {
 	return &Sniffer{
 		opts:             &opts,
 		nextRotationHour: nil,
-		done:             make(chan struct{}),
 	}
 }
 
@@ -61,9 +62,17 @@ func Get() *Sniffer {
 }
 
 func (s *Sniffer) Start(ctx context.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("sniffer context is nil")
+	}
+
 	if !s.opts.Enabled {
 		return nil
 	}
+
+	// create a new context from the parent context with cancel to manage the lifecycle of the sniffer components
+	// if parent context is canceled, the sniffer will stop all its components
+	s.ctx, s.cancel = context.WithCancel(ctx)
 
 	now := time.Now()
 	if s.nextRotationHour == nil {
@@ -72,61 +81,76 @@ func (s *Sniffer) Start(ctx context.Context) error {
 	}
 
 	if s.opts.EnableServer {
-		if err := s.startServer(); err != nil {
+		if err := s.startSnapshotServer(); err != nil {
 			return err
 		}
 	}
 
 	go func() {
-		<-ctx.Done()
-		logx.As().Debug().Msg("Context canceled, stopping stats capture...")
+		<-ctx.Done() // check if the parent context is canceled
+		logx.As().Debug().Msg("Context canceled, stopping profiling data capture...")
 		s.Stop()
 	}()
 
-	return s.captureStats()
+	return s.startCapturingStats()
 }
 
 func (s *Sniffer) Stop() {
-	if s.done != nil {
-		close(s.done)
-		s.done = nil
+	if s.cancel != nil {
+		s.cancel()
 	}
 }
 
-func (s *Sniffer) startServer() error {
+// startSnapshotServer starts an HTTP server to serve the last captured profiling data.
+// It is closed once the sniffer context is canceled.
+func (s *Sniffer) startSnapshotServer() error {
+	if s.ctx == nil {
+		return fmt.Errorf("sniffer context is nil")
+	}
 	serverURL := fmt.Sprintf("%s:%d", s.opts.ServerHost, s.opts.ServerPort)
-	server := &http.Server{Addr: serverURL}
 
-	http.HandleFunc("/v1/stats", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/last-snapshot", func(w http.ResponseWriter, r *http.Request) {
 		if s.lastSnapshot == nil {
-			http.Error(w, "Stats not available", http.StatusServiceUnavailable)
+			http.Error(w, "Stats not available", http.StatusNoContent)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(s.lastSnapshot); err != nil {
-			http.Error(w, "Failed to encode stats", http.StatusInternalServerError)
+			http.Error(w, "Failed to encode profiling data", http.StatusInternalServerError)
 		}
 	})
 
+	server := &http.Server{
+		Addr:    serverURL,
+		Handler: mux,
+	}
+
 	go func() {
-		logx.As().Info().Msg(fmt.Sprintf("Starting pprof server on %s", serverURL))
+		logx.As().Info().Msg(fmt.Sprintf("Starting snapshot server on %s", serverURL))
 		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			logx.As().Error().Err(err).Msg("pprof server failed")
+			logx.As().Error().Err(err).Msg("snapshot server failed")
 		}
 	}()
 
 	go func(sv *http.Server) {
-		<-s.done
-		logx.As().Info().Msg("Shutting down pprof server...")
+		<-s.ctx.Done()
+		logx.As().Info().Msg("Shutting down snapshot server...")
 		if err := sv.Shutdown(context.Background()); err != nil {
-			logx.As().Error().Err(err).Msg("Failed to shut down pprof server")
+			logx.As().Error().Err(err).Msg("Failed to shut down snapshot server")
 		}
 	}(server)
 
 	return nil
 }
 
-func (s *Sniffer) captureStats() error {
+// startCapturingStats starts capturing runtime profiling data and writing them to a file.
+// It is closed once the sniffer context is canceled.
+func (s *Sniffer) startCapturingStats() error {
+	if s.ctx == nil {
+		return fmt.Errorf("sniffer context is nil")
+	}
+
 	if err := os.MkdirAll(s.opts.Directory, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
@@ -145,7 +169,7 @@ func (s *Sniffer) captureStats() error {
 	go func() {
 		for {
 			select {
-			case <-s.done:
+			case <-s.ctx.Done():
 				return
 			default:
 				time.Sleep(interval)
@@ -169,7 +193,7 @@ func (s *Sniffer) captureStats() error {
 					Int("NumGoroutines", cpuStats.NumGoroutines).
 					Int("NumCPU", cpuStats.NumCPU).
 					Int64("NumCgoCalls", cpuStats.NumCgoCalls).
-					Msg("Captured runtime stats")
+					Msg("Captured runtime profiling data")
 			}
 		}
 	}()
@@ -244,6 +268,8 @@ func (s *Sniffer) collectStats() (*MemStats, *CPUStats) {
 }
 
 func (s *Sniffer) writeStatsToFile(encoder *json.Encoder, memStats *MemStats, cpuStats *CPUStats) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.lastSnapshot = &Stats{
 		Pid:       logx.GetPid(),
 		Timestamp: time.Now().Format(time.RFC3339Nano),
@@ -252,7 +278,7 @@ func (s *Sniffer) writeStatsToFile(encoder *json.Encoder, memStats *MemStats, cp
 	}
 
 	if err := encoder.Encode(s.lastSnapshot); err != nil {
-		return fmt.Errorf("failed to write stats to file: %w", err)
+		return fmt.Errorf("failed to write profiling data to file: %w", err)
 	}
 	return nil
 }

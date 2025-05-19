@@ -13,10 +13,43 @@ import (
 
 type s3Handler struct {
 	*handler
-	client       *minio.Client
+	client       s3Client
 	bucketConfig config.BucketConfig
 	retryConfig  config.RetryConfig
 	bucketExists map[string]bool
+}
+
+// s3Client is an interface that defines the methods for interacting with S3-compatible storage.
+// It is used to abstract the MinIO client to expose limited functionalities, which also allows for mocking in tests.
+type s3Client interface {
+	BucketExists(ctx context.Context, bucketName string) (bool, error)
+
+	MakeBucket(ctx context.Context, bucketName string, opts minio.MakeBucketOptions) error
+
+	StatObject(ctx context.Context, bucketName, objectName string, opts minio.StatObjectOptions) (minio.ObjectInfo, error)
+
+	FPutObject(ctx context.Context, bucketName, objectName, filePath string, opts minio.PutObjectOptions) (minio.UploadInfo, error)
+}
+
+// minioClientWrapper is a wrapper around the MinIO client to implement the s3Client interface.
+type minioClientWrapper struct {
+	client *minio.Client
+}
+
+func (m *minioClientWrapper) BucketExists(ctx context.Context, bucketName string) (bool, error) {
+	return m.client.BucketExists(ctx, bucketName)
+}
+
+func (m *minioClientWrapper) MakeBucket(ctx context.Context, bucketName string, opts minio.MakeBucketOptions) error {
+	return m.client.MakeBucket(ctx, bucketName, opts)
+}
+
+func (m *minioClientWrapper) StatObject(ctx context.Context, bucketName, objectName string, opts minio.StatObjectOptions) (minio.ObjectInfo, error) {
+	return m.client.StatObject(ctx, bucketName, objectName, opts)
+}
+
+func (m *minioClientWrapper) FPutObject(ctx context.Context, bucketName, objectName, filePath string, opts minio.PutObjectOptions) (minio.UploadInfo, error) {
+	return m.client.FPutObject(ctx, bucketName, objectName, filePath, opts)
 }
 
 // ensureBucketExists checks if the bucket exists in S3. If it doesn't exist, it creates the bucket.
@@ -147,7 +180,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 }
 
 // newS3Handler initializes a new S3 handler with the provided configuration and retry settings.
-func newS3Handler(id string, storageType string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, rootDir string, fileExtensions []string) (core.Storage, error) {
+func newS3Handler(id string, storageType string, bucketConfig config.BucketConfig, retryConfig config.RetryConfig, rootDir string, fileExtensions []string) (*s3Handler, error) {
 	if err := config.ValidateBucketConfig(bucketConfig); err != nil {
 		logx.As().Error().
 			Str("storage_type", storageType).
@@ -182,7 +215,7 @@ func newS3Handler(id string, storageType string, bucketConfig config.BucketConfi
 			pathPrefix:     bucketConfig.Prefix,
 			rootDir:        rootDir,
 		},
-		client:       client,
+		client:       &minioClientWrapper{client: client},
 		bucketConfig: bucketConfig,
 		retryConfig:  retryConfig,
 		bucketExists: make(map[string]bool),

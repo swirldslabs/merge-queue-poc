@@ -53,6 +53,7 @@ func (p *processor) Process(ctx context.Context, items <-chan ScannerResult, ech
 			}
 		}
 	}
+	logx.As().Debug().Msg("Processing stopped")
 }
 
 // upload handles the parallel uploading of files to the configured storage handlers.
@@ -240,6 +241,10 @@ func (p *processor) prepareRemovalCandidates(resp ProcessorResult) []string {
 }
 
 func NewProcessor(id string, storages []Storage, fileExtensions []string) (Processor, error) {
+	return newProcessor(id, storages, fileExtensions)
+}
+
+func newProcessor(id string, storages []Storage, fileExtensions []string) (*processor, error) {
 	// if pattern contains '*' or '?' in fileExtensions, it is not a supported pattern. We only allow extension like .rcd_sig without * or ?
 	if len(fileExtensions) > 0 {
 		for _, ext := range fileExtensions {

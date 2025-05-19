@@ -125,7 +125,7 @@ func (d *localDirectoryHandler) syncWithDir(ctx context.Context, src string, des
 		return nil, fmt.Errorf("failed to copy file: %w", err)
 	}
 
-	logx.As().Info().
+	logx.As().Debug().
 		Str("src", src).
 		Str("dest", destPath).
 		Str("checksum", localChecksum).
@@ -149,6 +149,10 @@ func (d *localDirectoryHandler) prepareUploadInfo(src string, dest string, check
 
 // NewLocalDir creates a new local directory storage handler.
 func NewLocalDir(id string, config config.LocalDirConfig, retryConfig config.RetryConfig, rootDir string, fileExtensions []string) (core.Storage, error) {
+	return newLocalDir(id, config, retryConfig, rootDir, fileExtensions)
+}
+
+func newLocalDir(id string, config config.LocalDirConfig, retryConfig config.RetryConfig, rootDir string, fileExtensions []string) (*localDirectoryHandler, error) {
 	l := &localDirectoryHandler{
 		handler: &handler{
 			id:             id,

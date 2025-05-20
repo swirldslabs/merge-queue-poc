@@ -3,6 +3,7 @@
 # Use the official Go image for building the application
 FROM ubuntu:noble-20250415.1 AS base
 
+ARG SOURCE_DATE_EPOCH=0
 
 # Add dependencies
 RUN apt-get update && apt-get install -y adduser

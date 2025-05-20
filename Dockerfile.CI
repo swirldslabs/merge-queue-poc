@@ -1,0 +1,70 @@
+# Step 1: Build the application
+# --------------------------------------------------------
+# Use the official Go image for building the application
+FROM ubuntu:noble-20250415.1 AS base
+
+RUN mkdir -p /app/dl && \
+    mkdir -p /app/config && \
+    mkdir -p /app/logs && \
+    mkdir -p /app/stats && \
+    mkdir -p /app/data
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Load the binary from the source
+COPY bin/cheetah* /app/dl/
+
+# Rename the binary for the architecture
+RUN ARCH=$(uname -m) && \
+    [[ "${ARCH}" == "x86_64" ]] && ARCH="amd64" || \
+    [[ "${ARCH}" == "aarch64" ]] && ARCH="arm64" || \
+    mv /app/dl/cheetah-linux-${ARCH} /app/cheetah  && \
+    rm -rf /app/dl/ && \
+    chmod +x /app/cheetah
+
+# Create a non-root user
+ENV USER=cheetah
+ENV UID=10001
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/app" \
+    --shell "/bin/bash" \
+    --no-create-home \
+    --uid "${UID}" \
+    "${USER}"
+
+########################################
+####    Deterministic Build Hack    ####
+########################################
+
+# === Workarounds below will not be needed when https://github.com/moby/buildkit/pull/4057 is merged ===
+# NOTE: PR #4057 has been merged but will not be available until the v0.13.x series of releases.
+# Limit the timestamp upper bound to SOURCE_DATE_EPOCH.
+# Workaround for https://github.com/moby/buildkit/issues/3180
+RUN find $( ls / | grep -E -v "^(dev|mnt|proc|sys)$" ) \
+  -newermt "@${SOURCE_DATE_EPOCH}" -writable -xdev \
+  | xargs touch --date="@${SOURCE_DATE_EPOCH}" --no-dereference
+
+# Step 2: Create a minimal image
+# --------------------------------------------------------
+# Use a minimal base image for the final container
+FROM scratch
+ENV USER=cheetah
+ENV UID=10001
+
+COPY --from=base / /
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Set the user to the non-root user
+USER cheetah:cheetah
+
+# Define volumes for data and config
+VOLUME ["/app/data", "/app/config", "/app/logs", "/app/stats"]
+
+EXPOSE 6060
+
+ENTRYPOINT ["/app/cheetah"]

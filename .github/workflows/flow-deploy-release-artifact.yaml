@@ -6,7 +6,7 @@ on:
         description: "Go Version:"
         type: string
         required: false
-        default: ">=1.24.3"
+        default: "1.24.3"
       dry-run-enabled:
         description: "Perform Dry Run"
         type: boolean
@@ -14,7 +14,8 @@ on:
         default: false
 
 env:
-  REGISTRY: ghcr.io
+  DOCKER_REGISTRY: ghcr.io
+  DOCKER_IMAGE_NAME: cheetah
 
 defaults:
   run:
@@ -22,6 +23,7 @@ defaults:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   create-github-release:
@@ -38,6 +40,14 @@ jobs:
         with:
           token: ${{ secrets.GH_ACCESS_TOKEN }}
           fetch-depth: 0
+
+      - name: Retrieve Commit Hash
+        id: commit
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+          echo "sha-abbrev=$(git rev-parse HEAD | tr -d '[:space:]' | cut -c1-8)" >> "${GITHUB_OUTPUT}"
+          echo "source-date=$(git log -1 --pretty=%ct)" >> "${GITHUB_OUTPUT}"
+          echo "oci-date=$(date -u -d @$(git log -1 --pretty=%ct) +'%Y%m%d')" >> "${GITHUB_OUTPUT}"
 
       - name: Setup GoLang
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -66,6 +76,13 @@ jobs:
           git_commit_gpgsign: true
           git_tag_gpgsign: false
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install Task
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
@@ -77,6 +94,19 @@ jobs:
         with:
           node-version: 20
 
+      - name: Setup QEmu Support
+        uses: docker/setup-qemu-action@5964de0df58d5ad28b04d8fe2e6b80ad47105b91 # v3.5.0
+
+      - name: Setup Docker Buildx Support
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+        if: ${{ steps.baseline.outputs.exists == 'false' && !failure() && !cancelled() }}
+        with:
+          version: v0.16.2
+          driver-opts: network=host
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["https://hub.mirror.docker.lat.ope.eng.hashgraph.io"]
+
       - name: Install Semantic Release
         run: npm install -g semantic-release@24.2.4 @semantic-release/exec@7.1.0 conventional-changelog-conventionalcommits@8.0.0
 
@@ -85,9 +115,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
         run: |
           FLAGS=""
-          if [[ "${{ github.event.inputs.dry-run-enabled }}" == "true" ]]; then
+          if [[ "${{ inputs.dry-run-enabled }}" == "true" ]]; then
             FLAGS="--dry-run"
           fi
           
           npx semantic-release ${FLAGS}
 
+      - name: Retrieve Container Version
+        id: version
+        run: echo "number=$(cat internal/version/VERSION | tr -d '[:space:]')" >> "${GITHUB_OUTPUT}"
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 # v6.15.0
+        with:
+          file: Dockerfile.CI
+          platforms: linux/amd64, linux/arm64
+          push: ${{ inputs.dry-run-enabled != 'true' }}
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.version.outputs.number }}
+            ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.version.outputs.number }}-${{ steps.commit.outputs.sha-abbrev }}
+            ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.version.outputs.number }}-${{ steps.commit.outputs.oci-date }}

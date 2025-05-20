@@ -18,7 +18,7 @@ COPY internal/ ./internal/
 COPY pkg/ ./pkg/
 
 # Build the solo-cheetah binary with minimal flags
-RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ./cheetah -v ./cmd/cheetah
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o ./cheetah -v ./cmd/cheetah
 
 # Create a non-root user
 ENV USER=appuser

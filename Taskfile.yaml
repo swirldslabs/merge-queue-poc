@@ -145,8 +145,9 @@ tasks:
     env:
       GOOS: "{{.GOOS}}"
       GOARCH: "{{.GOARCH}}"
+    dir: bin
     cmds:
-      - cmd: sha256sum bin/cheetah-{{.GOOS}}-{{.GOARCH}} > bin/cheetah-{{.GOOS}}-{{.GOARCH}}.sha256
+      - cmd: sha256sum cheetah-{{.GOOS}}-{{.GOARCH}} > cheetah-{{.GOOS}}-{{.GOARCH}}.sha256
 
   sign:cheetah:all:
     desc: "Sign the Cheetah daemon binaries for all configured operating systems and architectures"

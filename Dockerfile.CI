@@ -5,17 +5,12 @@ FROM ubuntu:noble-20250415.1 AS base
 
 ARG SOURCE_DATE_EPOCH=0
 
-# Add dependencies
-RUN apt-get update && apt-get install -y adduser
-
 RUN mkdir -p /app/dl && \
     mkdir -p /app/config && \
     mkdir -p /app/logs && \
     mkdir -p /app/stats && \
-    mkdir -p /app/data
-
-# Set the working directory inside the container
-WORKDIR /app
+    mkdir -p /app/data && \
+    mkdir -p /app/bin
 
 # Load the binary from the source
 COPY bin/cheetah* /app/dl/
@@ -27,21 +22,33 @@ RUN ARCH=$(uname -m) && \
     elif [ "${ARCH}" = "aarch64" ]; then \
         ARCH="arm64"; \
     fi && \
-    mv /app/dl/cheetah-linux-${ARCH} /app/cheetah && \
-    rm -rf /app/dl/ && \
-    chmod +x /app/cheetah
-    
+    cd /app/dl && \
+    sha256sum -c cheetah-linux-${ARCH}.sha256 && \
+    mv /app/dl/cheetah-linux-${ARCH} /app/bin/cheetah && \
+    chmod +x /app/bin/cheetah && \
+    rm -rf /app/dl/
+
 # Create a non-root user
-ENV USER=cheetah
-ENV UID=10001
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --home "/app" \
+ENV USER_NAME=cheetah
+ENV USER_ID=999
+ENV GROUP_ID=999
+
+RUN groupadd \
+    --gid "${GROUP_ID}" \
+    --system \
+    "${USER_NAME}"
+
+RUN useradd \
+    --system \
+    --home-dir "/app" \
     --shell "/bin/bash" \
     --no-create-home \
-    --uid "${UID}" \
-    "${USER}"
+    --uid "${USER_ID}" \
+    --gid "${GROUP_ID}" \
+    "${USER_NAME}"
+
+RUN chown -R cheetah:cheetah /app/config /app/logs /app/stats /app/data && \
+    chmod -R 755 /app/config /app/logs /app/stats /app/data
 
 ########################################
 ####    Deterministic Build Hack    ####
@@ -59,8 +66,6 @@ RUN find $( ls / | grep -E -v "^(dev|mnt|proc|sys)$" ) \
 # --------------------------------------------------------
 # Use a minimal base image for the final container
 FROM scratch
-ENV USER=cheetah
-ENV UID=10001
 
 COPY --from=base / /
 
@@ -75,4 +80,4 @@ VOLUME ["/app/data", "/app/config", "/app/logs", "/app/stats"]
 
 EXPOSE 6060
 
-ENTRYPOINT ["/app/cheetah"]
+ENTRYPOINT ["/app/bin/cheetah"]

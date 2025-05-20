@@ -3,6 +3,10 @@
 # Use the official Go image for building the application
 FROM ubuntu:noble-20250415.1 AS base
 
+
+# Add dependencies
+RUN apt-get update && apt-get install -y adduser
+
 RUN mkdir -p /app/dl && \
     mkdir -p /app/config && \
     mkdir -p /app/logs && \

@@ -34,7 +34,7 @@
     [
       "@semantic-release/exec",
       {
-        "cmd": "task build"
+        "cmd": "task hash"
       }
     ]
   ],

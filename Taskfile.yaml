@@ -42,6 +42,22 @@ tasks:
     cmds:
       - task: "generate"
       - task: "build:cheetah:all"
+    sources:
+      - "**/*.go"
+    generates:
+      - "bin/cheetah-linux-*"
+      - "bin/cheetah-darwin-*"
+
+  hash:
+    deps:
+      - "build"
+    cmds:
+      - task: "hash:cheetah:all"
+    sources:
+      - "bin/cheetah-linux-*"
+      - "bin/cheetah-darwin-*"
+    generates:
+      - "bin/*.sha256"
 
   sign:
     deps:
@@ -139,12 +155,35 @@ tasks:
       - cmd: go build -ldflags='{{.LDFLAGS}}' -trimpath -o bin/cheetah-{{coalesce .GOOS OS}}-{{coalesce .GOARCH ARCH}} ./cmd/cheetah
       - cmd: chmod +x bin/cheetah-{{coalesce .GOOS OS}}-{{coalesce .GOARCH ARCH}}
 
+  hash:cheetah:all:
+    desc: "Hash the Cheetah daemon binaries for all configured operating systems and architectures"
+    cmds:
+      - task: hash:cheetah:all:os
+
+  hash:cheetah:all:os:
+    internal: true
+    desc: "Hash the Cheetah daemon binaries for all configured operating systems"
+    cmds:
+      - for:
+          var: OS
+        task: hash:cheetah:all:arch
+        vars:
+          GOOS: "{{.ITEM}}"
+
+  hash:cheetah:all:arch:
+    internal: true
+    desc: "Hash the Cheetah daemon binaries for all configured architectures"
+    cmds:
+      - for:
+          var: ARCH
+        task: hash:cheetah
+        vars:
+          GOOS: "{{.GOOS}}"
+          GOARCH: "{{.ITEM}}"
+
   hash:cheetah:
     internal: true
     desc: "Hash the Cheetah daemon binaries for the specified operating system and architecture"
-    env:
-      GOOS: "{{.GOOS}}"
-      GOARCH: "{{.GOARCH}}"
     dir: bin
     cmds:
       - cmd: sha256sum cheetah-{{.GOOS}}-{{.GOARCH}} > cheetah-{{.GOOS}}-{{.GOARCH}}.sha256

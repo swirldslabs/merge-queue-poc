@@ -17,8 +17,11 @@ COPY bin/cheetah* /app/dl/
 
 # Rename the binary for the architecture
 RUN ARCH=$(uname -m) && \
-    [[ "${ARCH}" == "x86_64" ]] && ARCH="amd64" || \
-    [[ "${ARCH}" == "aarch64" ]] && ARCH="arm64" || \
+    if [[ "${ARCH}" == "x86_64" ]]; then \
+        ARCH="amd64"; \
+    elif [[ "${ARCH}" == "aarch64" ]]; then \
+        ARCH="arm64"; \
+    fi && \
     mv /app/dl/cheetah-linux-${ARCH} /app/cheetah  && \
     rm -rf /app/dl/ && \
     chmod +x /app/cheetah

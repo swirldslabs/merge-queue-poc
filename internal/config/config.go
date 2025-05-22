@@ -6,6 +6,8 @@ import (
 	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"golang.hedera.com/solo-cheetah/pkg/sniff"
 	"os"
+	"strconv"
+	"strings"
 )
 
 // Config holds the global configuration for the application.
@@ -128,6 +130,7 @@ func Initialize(path string) error {
 	viper.SetConfigFile(path)
 	viper.SetEnvPrefix("cheetah")
 	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("failed to read configuration file: %w", err)
@@ -138,7 +141,13 @@ func Initialize(path string) error {
 	}
 
 	initializeNestedStructs()
-	overrideWithEnvVars()
+
+	// Set values for the pipeline configuration using env vars.
+	// We need this because currently viper won't override the array configuration elements using the env vars.
+	err := overridePipelineConfigWithEnvVars()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -167,22 +176,55 @@ func initializeNestedStructs() {
 	}
 }
 
-// overrideWithEnvVars overrides sensitive fields with environment variables if set.
-func overrideWithEnvVars() {
+// overridePipelineConfigWithEnvVars overrides pipeline configuration values with environment variables.
+// We need this because currently viper won't override the array configuration elements using the env vars.
+func overridePipelineConfigWithEnvVars() error {
 	for _, pipeline := range config.Pipelines {
-		if pipeline.Processor.Storage.S3.AccessKey != "" {
-			pipeline.Processor.Storage.S3.AccessKey = os.Getenv(pipeline.Processor.Storage.S3.AccessKey)
+		// set boolean fields using well-defined env vars
+		booleanFields := map[string]*bool{
+			"S3_ENABLED":  &pipeline.Processor.Storage.S3.Enabled,
+			"S3_USE_SSL":  &pipeline.Processor.Storage.S3.UseSSL,
+			"GCS_ENABLED": &pipeline.Processor.Storage.GCS.Enabled,
+			"GCS_USE_SSL": &pipeline.Processor.Storage.GCS.UseSSL,
 		}
-		if pipeline.Processor.Storage.S3.SecretKey != "" {
-			pipeline.Processor.Storage.S3.SecretKey = os.Getenv(pipeline.Processor.Storage.S3.SecretKey)
+		for envVar, field := range booleanFields {
+			if envValue := os.Getenv(envVar); envValue != "" {
+				envValueBool, err := strconv.ParseBool(envValue)
+				if err != nil {
+					return fmt.Errorf("invalid value for %s: %s", envVar, envValue)
+				} else {
+					*field = envValueBool
+				}
+			}
 		}
-		if pipeline.Processor.Storage.GCS.AccessKey != "" {
-			pipeline.Processor.Storage.GCS.AccessKey = os.Getenv(pipeline.Processor.Storage.GCS.AccessKey)
-		}
-		if pipeline.Processor.Storage.GCS.SecretKey != "" {
-			pipeline.Processor.Storage.GCS.SecretKey = os.Getenv(pipeline.Processor.Storage.GCS.SecretKey)
-		}
+
+		overrideBucketConfigWithEnv(pipeline.Processor.Storage.S3)
+		overrideBucketConfigWithEnv(pipeline.Processor.Storage.GCS)
 	}
+
+	return nil
+}
+
+// overrideBucketConfigWithEnv overrides bucket configuration values with environment variables.
+func overrideBucketConfigWithEnv(bucket *BucketConfig) {
+	if bucket == nil {
+		return
+	}
+
+	bucket.Bucket = overrideWithEnv(bucket.Bucket)
+	bucket.Region = overrideWithEnv(bucket.Region)
+	bucket.Prefix = overrideWithEnv(bucket.Prefix)
+	bucket.Endpoint = overrideWithEnv(bucket.Endpoint)
+	bucket.AccessKey = overrideWithEnv(bucket.AccessKey)
+	bucket.SecretKey = overrideWithEnv(bucket.SecretKey)
+}
+
+// overridePipelineConfigWithEnvVars overrides configuration values with environment variables.
+func overrideWithEnv(value string) string {
+	if envValue := os.Getenv(value); envValue != "" {
+		return envValue
+	}
+	return value
 }
 
 // Get returns the loaded configuration.

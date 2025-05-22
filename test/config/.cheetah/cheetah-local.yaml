@@ -23,7 +23,6 @@ pipelines:
     scanner:
       directory: /tmp/solo-cheetah/data/hgcapp/recordStreams #/tmp/solo-cheetah/data/hgcapp/recordStreams
       pattern: ".rcd_sig"
-      recursive: true
       interval: 100ms
       batchSize: 1000
     processor: # each processor can upload to multiple storages concurrently or sequentially
@@ -59,7 +58,6 @@ pipelines:
     scanner:
       directory: test/data/hgcapp/eventsStreams
       pattern: ".evts_sig"
-      recursive: true
       interval: 100ms
     processor: # each processor can upload to multiple storages concurrently or sequentially
       maxProcessors: 10
@@ -94,7 +92,6 @@ pipelines:
     scanner:
       directory: /tmp/solo-cheetah/data/hgcapp/blockstreams
       pattern: ".mf"
-      recursive: true
       interval: 100ms
       batchSize: 1000
     processor: # each processor can upload to multiple storages concurrently or sequentially

@@ -20,7 +20,6 @@ pipelines:
     scanner:
       directory: /app/data/hgcapp/recordStreams
       pattern: ".rcd_sig"
-      recursive: true
       interval: 100ms
       batchSize: 1000
     processor: # each processor can upload to multiple storages concurrently or sequentially
@@ -56,7 +55,6 @@ pipelines:
     scanner:
       directory: /app/data/hgcapp/eventsStreams
       pattern: ".evts_sig"
-      recursive: true
       interval: 100ms
     processor: # each processor can upload to multiple storages concurrently or sequentially
       maxProcessors: 10

@@ -23,7 +23,6 @@ pipelines:
     scanner:
       directory: /test/data/hgcapp/recordStreams
       pattern: ".rcd_sig"
-      recursive: true
       interval: 100ms
       batchSize: 1000
     processor: # each processor can upload to multiple storages concurrently or sequentially

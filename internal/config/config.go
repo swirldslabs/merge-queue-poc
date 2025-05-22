@@ -40,8 +40,6 @@ type ScannerConfig struct {
 	Directory string
 	// Pattern is the file extension pattern to match.
 	Pattern string
-	// Recursive enables recursive scanning of directories.
-	Recursive bool
 	// Interval specifies the scan interval (e.g., "5m").
 	Interval string
 	// BatchSize is the number of files to process in a batch.

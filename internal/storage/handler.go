@@ -131,7 +131,7 @@ func (h *handler) runParallel(ctx context.Context, markerFile string, candidateE
 			defer wg.Done()
 			src := fsx.CombineFilePath(srcDir, fileName, ext)
 			if _, exists := fsx.PathExists(src); !exists {
-				logx.As().Warn().Str("src", src).Str("storage_type", h.Type()).Msg("Source file does not exist, skipping upload")
+				errChan <- fmt.Errorf("candidate file is missing, failed to upload file %s in %s", src, h.Type())
 				return
 			}
 

@@ -33,7 +33,7 @@ pipelines:
       storage:
         s3:
           enabled: false
-          bucket: cheetah
+          bucket: cheetah-s3
           region: us-east-1
           prefix: streams/record-streams
           endpoint: localhost:9000
@@ -42,10 +42,10 @@ pipelines:
           useSsl: false
         gcs:
           enabled: false
-          bucket: lenin-test
+          bucket: cheetah-gcs
           region: us-east-1
-          prefix: cheetah/streams/record-streams
-          endpoint: storage.googleapis.com
+          prefix: streams/record-streams
+          endpoint: localhost:9000
           accessKey: GCS_ACCESS_KEY # use this env variable
           secretKey: GCS_SECRET_KEY # use this env variable
           useSsl: true

@@ -7,6 +7,7 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"golang.hedera.com/solo-cheetah/internal/config"
 	"golang.hedera.com/solo-cheetah/pkg/fsx"
 	"os"
@@ -151,6 +152,62 @@ func TestS3Handler_SyncWithBucket(t *testing.T) {
 	mockClient.On("StatObject", mock.Anything, bucketName, objectName, mock.Anything).Return(minio.ObjectInfo{}, fmt.Errorf("not found")).Once()
 	mockClient.On("FPutObject", mock.Anything, bucketName, objectName, srcFile, mock.Anything).Return(minio.UploadInfo{
 		ETag: "invalid",
+		Key:  objectName,
+	}, nil).Once()
+	info, err = h.syncWithBucket(context.Background(), srcFile, objectName)
+	assert.Error(t, err)
+	assert.Nil(t, info)
+}
+
+func TestChecksumRecalculation(t *testing.T) {
+	tempDir := t.TempDir()
+	defer func() {
+		_ = os.RemoveAll(tempDir)
+	}()
+
+	mockClient := new(mockS3Client)
+	bucketName := "test-bucket"
+	bucketConfig := config.BucketConfig{Bucket: bucketName}
+	h := &s3Handler{
+		handler: &handler{
+			id:             "s3-handler",
+			storageType:    TypeS3,
+			fileExtensions: []string{".txt", ".log"},
+			pathPrefix:     bucketConfig.Prefix,
+			rootDir:        tempDir,
+		},
+		client:       mockClient,
+		bucketConfig: bucketConfig,
+		retryConfig:  config.RetryConfig{Limit: 1},
+		bucketExists: make(map[string]bool),
+	}
+
+	srcFile := filepath.Join(tempDir, "source.txt")
+
+	// Create a source file
+	err := os.WriteFile(srcFile, []byte("test content"), 0644)
+	assert.NoError(t, err)
+
+	latestChecksum, err := fsx.FileMD5(srcFile)
+	require.NoError(t, err)
+
+	objectName := "object.txt"
+
+	// Test case: Successful checksum recalculation
+	mockClient.On("StatObject", mock.Anything, bucketName, objectName, mock.Anything).Return(minio.ObjectInfo{}, errors.New("not found")).Twice()
+	mockClient.On("FPutObject", mock.Anything, bucketName, objectName, mock.Anything, mock.Anything).Return(minio.UploadInfo{
+		ETag: latestChecksum,
+		Key:  objectName,
+	}, nil).Once()
+
+	info, err := h.syncWithBucket(context.Background(), srcFile, objectName)
+	assert.NoError(t, err)
+	assert.NotNil(t, info)
+	assert.Equal(t, objectName, info.Dest)
+
+	// Test case: Checksum mismatch
+	mockClient.On("FPutObject", mock.Anything, bucketName, objectName, mock.Anything, mock.Anything).Return(minio.UploadInfo{
+		ETag: "invalid-checksum", // Simulating a checksum mismatch
 		Key:  objectName,
 	}, nil).Once()
 	info, err = h.syncWithBucket(context.Background(), srcFile, objectName)

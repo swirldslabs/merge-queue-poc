@@ -151,14 +151,25 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 		return nil, fmt.Errorf("failed to upload file to S3: %w", err)
 	}
 
-	if info.ETag != localChecksum {
+	// calculate checksum after upload since file might have modified during upload
+	latestChecksum, err := fsx.FileMD5(src)
+	if err != nil {
 		logx.As().Error().
 			Str("src", src).
-			Str("object", objectName).
-			Str("expected_md5", localChecksum).
+			Str("objectName", objectName).
+			Err(err).
+			Msg("Failed to calculate local file checksum")
+		return nil, fmt.Errorf("failed to calculate local checksum: %w", err)
+	}
+
+	if info.ETag != latestChecksum {
+		logx.As().Error().
+			Str("src", src).
+			Str("objectName", objectName).
+			Str("expected_md5", latestChecksum).
 			Str("actual_md5", info.ETag).
 			Msg("Checksum mismatch after upload")
-		return nil, fmt.Errorf("checksum mismatch after upload: expected %s, got %s", localChecksum, info.ETag)
+		return nil, fmt.Errorf("checksum mismatch after upload: expected %s, got %s", latestChecksum, info.ETag)
 	}
 
 	logx.As().Debug().

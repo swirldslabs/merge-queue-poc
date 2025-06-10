@@ -50,6 +50,10 @@ func runUpload(ctx context.Context) {
 
 	var wg sync.WaitGroup
 	for _, pipeline := range config.Get().Pipelines {
+		if !pipeline.Enabled {
+			continue
+		}
+
 		// Create scanner
 		scanner, err := core.NewScanner(fmt.Sprintf("scanner-%s", pipeline.Name),
 			pipeline.Scanner.Directory, pipeline.Scanner.Pattern, pipeline.Scanner.BatchSize)
@@ -136,8 +140,7 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 			storages = append(storages, gcs)
 		}
 
-		p, err := core.NewProcessor(fmt.Sprintf("processor-%d-%s", i, pc.Name),
-			storages, pc.Processor.FileExtensions)
+		p, err := core.NewProcessor(fmt.Sprintf("processor-%d-%s", i, pc.Name), storages, pc.Processor)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create processor: %w", err)
 		}

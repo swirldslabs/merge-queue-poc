@@ -1,58 +1,83 @@
-# Step - 1: Build the application
+# Step 1: Build the application
 # --------------------------------------------------------
 # Use the official Go image for building the application
-FROM golang:1.24.2 AS builder
+FROM ubuntu:noble-20250415.1 AS base
 
-# Set the working directory inside the container
-WORKDIR /app
+ARG SOURCE_DATE_EPOCH=0
 
-# Copy go.mod and go.sum files
-COPY go.mod go.sum ./
+RUN mkdir -p /app/dl && \
+    mkdir -p /app/config && \
+    mkdir -p /app/logs && \
+    mkdir -p /app/stats && \
+    mkdir -p /app/data && \
+    mkdir -p /app/bin
 
-# Download the Go module dependencies
-RUN go mod download
+# Load the binary from the source
+COPY bin/cheetah* /app/dl/
 
-# Copy the source code into the container
-COPY cmd/ ./cmd/
-COPY internal/ ./internal/
-COPY pkg/ ./pkg/
+# Rename the binary for the architecture
+RUN ARCH=$(uname -m) && \
+    if [ "${ARCH}" = "x86_64" ]; then \
+        ARCH="amd64"; \
+    elif [ "${ARCH}" = "aarch64" ]; then \
+        ARCH="arm64"; \
+    fi && \
+    cd /app/dl && \
+    sha256sum -c cheetah-linux-${ARCH}.sha256 && \
+    mv /app/dl/cheetah-linux-${ARCH} /app/bin/cheetah && \
+    chmod +x /app/bin/cheetah && \
+    rm -rf /app/dl/
 
-# Build the solo-cheetah binary with minimal flags
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o ./cheetah -v ./cmd/cheetah
+# Create a non-root user and group same as hedera user (2000:2000)
+ENV USER_NAME=cheetah
+ENV USER_ID=2000
+ENV GROUP_ID=2000
 
-# Create a non-root user
-ENV USER=appuser
-ENV UID=10001
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --home "/nonexistent" \
-    --shell "/sbin/nologin" \
+RUN groupadd \
+    --gid "${GROUP_ID}" \
+    --system \
+    "${USER_NAME}"
+
+RUN useradd \
+    --system \
+    --home-dir "/app" \
+    --shell "/bin/bash" \
     --no-create-home \
-    --uid "${UID}" \
-    "${USER}"
+    --uid "${USER_ID}" \
+    --gid "${GROUP_ID}" \
+    "${USER_NAME}"
 
-# Step - 2: Create a minimal image
+RUN chown -R cheetah:cheetah /app/config /app/logs /app/stats /app/data && \
+    chmod -R 755 /app/config /app/logs /app/stats /app/data
+
+########################################
+####    Deterministic Build Hack    ####
+########################################
+
+# === Workarounds below will not be needed when https://github.com/moby/buildkit/pull/4057 is merged ===
+# NOTE: PR #4057 has been merged but will not be available until the v0.13.x series of releases.
+# Limit the timestamp upper bound to SOURCE_DATE_EPOCH.
+# Workaround for https://github.com/moby/buildkit/issues/3180
+RUN find $( ls / | grep -E -v "^(dev|mnt|proc|sys)$" ) \
+  -newermt "@${SOURCE_DATE_EPOCH}" -writable -xdev \
+  | xargs touch --date="@${SOURCE_DATE_EPOCH}" --no-dereference
+
+# Step 2: Create a minimal image
 # --------------------------------------------------------
 # Use a minimal base image for the final container
 FROM scratch
 
+COPY --from=base / /
+
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy the minimal /etc/passwd file to set up the non-root user
-COPY --from=builder /etc/passwd /etc/passwd
-COPY --from=builder /etc/group /etc/group
-
 # Set the user to the non-root user
-USER appuser:appuser
-
-# Copy the built binary from the builder stage
-COPY --from=builder /app/cheetah .
+USER cheetah:cheetah
 
 # Define volumes for data and config
 VOLUME ["/app/data", "/app/config", "/app/logs", "/app/stats"]
 
 EXPOSE 6060
 
-ENTRYPOINT ["/app/cheetah"]
+ENTRYPOINT ["/app/bin/cheetah"]

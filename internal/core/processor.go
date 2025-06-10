@@ -8,12 +8,31 @@ import (
 	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"os"
 	"sync"
+	"time"
 )
 
+// DefaultDelayBeforeUpload is the default delay before uploading files to allow flushing data files.
+const DefaultDelayBeforeUpload = time.Millisecond * 150
+const DefaultMarkerFileCheckInterval = time.Millisecond * 100
+const DefaultMarkerFileCheckMaxAttempts = 3
+const DefaultMarkerFileCheckMinSize = 0 // default minimum size for marker files to be considered ready
+
 type processor struct {
-	id             string
-	storages       []Storage
-	fileExtensions []string
+	id                string
+	storages          []Storage
+	fileExtensions    []string
+	flushDelay        time.Duration     // delay before uploading files to allow flushing data files
+	markerCheckConfig markerCheckConfig // configuration for marker file checks
+
+}
+
+// markerCheckConfig holds the configuration for checking marker files before processing them.
+// We define a separate struct so that we can translate config.CheckerConfig to markerCheckConfig particularly parsing
+// the checkInterval as time.Duration.
+type markerCheckConfig struct {
+	checkInterval time.Duration
+	maxAttempts   int
+	minSize       int64
 }
 
 func (p *processor) Info() string {
@@ -56,6 +75,96 @@ func (p *processor) Process(ctx context.Context, items <-chan ScannerResult, ech
 	logx.As().Debug().Msg("Processing stopped")
 }
 
+func (p *processor) applyDelay(ctx context.Context, delay time.Duration) {
+	timer := time.NewTimer(delay)
+	defer timer.Stop() // Ensure the timer is stopped to release resources
+
+	select {
+	case <-timer.C:
+		// proceed after delay
+	case <-ctx.Done():
+		logx.As().Warn().Msg("Processor context cancelled during delay before upload")
+	}
+}
+
+// waitForMarkerFileToBeReady checks if the marker file is ready for processing by ensuring it has reached the minimum size.
+// It applies a delay before checking the file size to allow for flushing data files.
+// If the marker file is not ready, it will repeatedly check its size until it reaches the minimum size or the maximum number of attempts is reached.
+// If the marker file is already larger than the minimum size, it returns immediately.
+// If the marker file does not exist, it returns an error.
+// Parameters:
+//   - ctx: The context used to manage cancellation and timeouts for the waiting process.
+//   - marker: The ScannerResult containing the path and file info of the marker file.
+//
+// Returns:
+//   - os.FileInfo of the marker file if it is ready, or an error if the file does not exist or other issues occur.
+func (p *processor) waitForMarkerFileToBeReady(ctx context.Context, marker ScannerResult) (os.FileInfo, error) {
+	// apply a delay to allow flushing data files before checking marker file
+	if p.flushDelay > 0 {
+		p.applyDelay(ctx, p.flushDelay)
+	}
+
+	// if the marker file is already larger than the minimum size, we can skip waiting
+	if marker.Info != nil && marker.Info.Size() > p.markerCheckConfig.minSize {
+		logx.As().Debug().
+			Str("marker", marker.Path).
+			Int64("size", marker.Info.Size()).
+			Int64("min_size", p.markerCheckConfig.minSize).
+			Msg("Marker file is ready for processing already, no need to wait")
+		return marker.Info, nil
+	}
+
+	// we will check the marker file size until it reaches the minimum size or we reach the maximum number of attempts
+	attempts := 0
+	markerPath := marker.Path
+	markerInfo := marker.Info
+	var err error
+	for {
+		select {
+		case <-ctx.Done():
+			logx.As().Warn().Msg("Processor context cancelled while waiting for marker file to be ready")
+			return nil, context.Canceled
+		default:
+			if attempts >= p.markerCheckConfig.maxAttempts {
+				logx.As().Warn().
+					Str("marker", markerPath).
+					Int("attempts", attempts).
+					Int("max_attempts", p.markerCheckConfig.maxAttempts).
+					Msg("Marker file is not ready after maximum attempts, continuing with upload anyway")
+				return markerInfo, nil // even if the marker file size does not reach the minimum size, we continue with upload
+			}
+
+			markerInfo, err = os.Stat(markerPath)
+			if err == nil {
+				if markerInfo.Size() >= p.markerCheckConfig.minSize {
+					logx.As().Debug().
+						Str("marker", markerPath).
+						Int64("size", markerInfo.Size()).
+						Int64("min_size", p.markerCheckConfig.minSize).
+						Int("attempts", attempts).
+						Int("max_attempts", p.markerCheckConfig.maxAttempts).
+						Msg("Marker file is ready for processing")
+					return markerInfo, nil
+				}
+
+				logx.As().Warn().
+					Str("marker", markerPath).
+					Int64("size", markerInfo.Size()).
+					Int64("min_size", p.markerCheckConfig.minSize).
+					Int("attempts", attempts).
+					Int("max_attempts", p.markerCheckConfig.maxAttempts).
+					Msg("Marker file is not ready, waiting for it to reach minimum size")
+			} else {
+				// this can happen if the file was removed
+				return nil, fmt.Errorf("marker file doesn't exist %s: %w", markerPath, err)
+			}
+
+			p.applyDelay(ctx, p.markerCheckConfig.checkInterval)
+			attempts++
+		}
+	}
+}
+
 // upload handles the parallel uploading of files to the configured storage handlers.
 // It receives files from the scanner through the input channel and processes them using goroutines
 // to upload to multiple storage handlers concurrently. The method ensures that the results of the
@@ -93,6 +202,16 @@ func (p *processor) upload(ctx context.Context, items <-chan ScannerResult) <-ch
 					continue
 				}
 
+				var err error
+				item.Info, err = p.waitForMarkerFileToBeReady(ctx, item)
+				if err != nil {
+					logx.As().Warn().
+						Err(err).
+						Str("marker", item.Path).
+						Msg("Failed to wait for marker file to be ready, skipping upload")
+					continue // skip this file if it is not ready
+				}
+
 				stored := make(chan StorageResult) // shared channel to receive storage results, closed after all storages are done
 				pr := ProcessorResult{
 					Error:  nil,
@@ -100,7 +219,10 @@ func (p *processor) upload(ctx context.Context, items <-chan ScannerResult) <-ch
 					Result: make(map[string]*StorageResult),
 				}
 
-				logx.As().Debug().Str("marker", item.Path).Msg("Processor processing marker file")
+				logx.As().Info().
+					Str("marker", item.Path).
+					Int64("size", item.Info.Size()).
+					Msg("Processor processing marker file")
 
 				// parallel upload
 				var wg sync.WaitGroup
@@ -240,11 +362,37 @@ func (p *processor) prepareRemovalCandidates(resp ProcessorResult) []string {
 	return removalCandidates
 }
 
-func NewProcessor(id string, storages []Storage, fileExtensions []string) (Processor, error) {
-	return newProcessor(id, storages, fileExtensions)
+func NewProcessor(id string, storages []Storage, pc *config.ProcessorConfig) (Processor, error) {
+	flushDelay := DefaultDelayBeforeUpload
+	var err error
+	if pc.FlushDelay != "" {
+		flushDelay, err = time.ParseDuration(pc.FlushDelay)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse flushDelay: %w", err)
+		}
+	}
+
+	mc := markerCheckConfig{
+		checkInterval: DefaultMarkerFileCheckInterval,
+		maxAttempts:   DefaultMarkerFileCheckMaxAttempts,
+		minSize:       DefaultMarkerFileCheckMinSize,
+	}
+
+	if pc.MarkerCheckConfig != nil {
+		if pc.MarkerCheckConfig.CheckInterval != "" {
+			mc.checkInterval, err = time.ParseDuration(pc.MarkerCheckConfig.CheckInterval)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse marker file check interval: %w", err)
+			}
+		}
+		mc.minSize = pc.MarkerCheckConfig.MinSize
+		mc.maxAttempts = pc.MarkerCheckConfig.MaxAttempts
+	}
+
+	return newProcessor(id, storages, pc.FileExtensions, flushDelay, mc)
 }
 
-func newProcessor(id string, storages []Storage, fileExtensions []string) (*processor, error) {
+func newProcessor(id string, storages []Storage, fileExtensions []string, flushDelay time.Duration, mc markerCheckConfig) (*processor, error) {
 	// if pattern contains '*' or '?' in fileExtensions, it is not a supported pattern. We only allow extension like .rcd_sig without * or ?
 	if len(fileExtensions) > 0 {
 		for _, ext := range fileExtensions {
@@ -255,8 +403,10 @@ func newProcessor(id string, storages []Storage, fileExtensions []string) (*proc
 	}
 
 	return &processor{
-		id:             id,
-		storages:       storages,
-		fileExtensions: fileExtensions,
+		id:                id,
+		storages:          storages,
+		fileExtensions:    fileExtensions,
+		flushDelay:        flushDelay,
+		markerCheckConfig: mc,
 	}, nil
 }

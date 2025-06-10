@@ -9,6 +9,7 @@ import (
 	"golang.hedera.com/solo-cheetah/internal/core"
 	"golang.hedera.com/solo-cheetah/pkg/fsx"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
+	"os"
 )
 
 type s3Handler struct {
@@ -169,7 +170,19 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 			Str("expected_md5", latestChecksum).
 			Str("actual_md5", info.ETag).
 			Msg("Checksum mismatch after upload")
-		return nil, fmt.Errorf("checksum mismatch after upload: expected %s, got %s", latestChecksum, info.ETag)
+
+		// Get local file info to compare sizes and log details
+		localInfo, err := os.Stat(src)
+		if err != nil {
+			logx.As().Error().
+				Str("src", src).
+				Str("objectName", objectName).
+				Err(err).
+				Msg("Failed to get local file info")
+			return nil, fmt.Errorf("failed to get local file info: %w", err)
+		}
+		return nil, fmt.Errorf("checksum mismatch after upload: expected %s, got %s "+
+			"(file_size_in_bucket = %d, file_size_local = %d)", latestChecksum, info.ETag, info.Size, localInfo.Size())
 	}
 
 	logx.As().Debug().

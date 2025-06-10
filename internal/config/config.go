@@ -22,6 +22,7 @@ type Config struct {
 
 // PipelineConfig holds the configuration for a single pipeline.
 type PipelineConfig struct {
+	Enabled bool
 	// Name is the name of the pipeline.
 	Name string
 	// Description provides a brief description of the pipeline.
@@ -56,6 +57,19 @@ type ProcessorConfig struct {
 	Storage *StorageConfig
 	// FileExtensions is a list of file extensions to process.
 	FileExtensions []string
+	// FlushDelay specifies how long to wait to allow data files to flush before starting uploads (e.g., "150ms").
+	FlushDelay string
+	// MarkerCheckConfig contains the configuration for checking marker files before starting to upload.
+	MarkerCheckConfig *MarkerCheckConfig
+}
+
+type MarkerCheckConfig struct {
+	// CheckInterval is delay between attempts to check a marker file.
+	CheckInterval string
+	// Maximum number of attempts to check a marker file before giving up.
+	MaxAttempts int
+	// Minimum size of marker files to process, in bytes. Default is 0, meaning all files are processed.
+	MinSize int64
 }
 
 // RetryConfig holds the configuration for retrying failed operations.
@@ -159,6 +173,15 @@ func initializeNestedStructs() {
 		if pipeline.Processor == nil {
 			pipeline.Processor = &ProcessorConfig{}
 		}
+
+		if pipeline.Processor.MarkerCheckConfig == nil {
+			pipeline.Processor.MarkerCheckConfig = &MarkerCheckConfig{
+				MinSize:       0,
+				MaxAttempts:   3,
+				CheckInterval: "100ms",
+			}
+		}
+
 		if pipeline.Processor.Storage == nil {
 			pipeline.Processor.Storage = &StorageConfig{}
 		}

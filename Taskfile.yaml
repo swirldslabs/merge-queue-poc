@@ -16,6 +16,8 @@ vars:
   TempEventsStreamsDir: "/tmp/solo-cheetah/data/hgcapp/eventsStreams"
   TempBackupRecordStreamsDir: "/tmp/solo-cheetah/data/backup/recordStreams"
   TempBackupEventsStreamsDir: "/tmp/solo-cheetah/data/backup/eventsStreams"
+env:
+  SOLO_CLUSTER_NAME: "${SOLO_CLUSTER_NAME:-kind-solo}"
 tasks:
   clean:
     cmds:
@@ -66,6 +68,8 @@ tasks:
       - task: "sign:cheetah:all"
 
   build:image:
+    deps:
+      - task: "hash"
     cmds:
       - "docker build -t solo-cheetah ."
 
@@ -240,6 +244,13 @@ tasks:
       - "go install github.com/becheran/go-testreport@90efc1ce13c872f23d6bc8a069527c26288b8f9c"
       - "go test -race -cover -json ./internal/... ./pkg/... ./cmd/... | go-testreport -output unit-test-report.md -vars 'Title:Unit Test Report'"
 
+  test:coverage:
+    cmds:
+      - "go install github.com/vladopajic/go-test-coverage/v2@7003e902e787e60375e1ce3ae5b85b19313dbff2"
+      - "go test -race -cover -json ./internal/... ./pkg/... ./cmd/... -coverprofile=./cover.out -covermode=atomic -coverpkg=./..."
+      - "go-test-coverage --config=./.testcoverage.yml"
+
+
   run:
     deps:
       - "run:cheetah"
@@ -278,3 +289,10 @@ tasks:
       - "source /etc/profile.d/go.sh"
     generates:
       - "/usr/local/go/**"
+
+  # Install the Cheetah Docker image into a Kind cluster for local development and testing rather than pulling from a registry.
+  # We need to update the image tag to 'local' in the solo-charts to avoid pulling from the registry.
+  load:
+    cmds:
+      - "docker tag solo-cheetah ghcr.io/hashgraph/solo-cheetah/cheetah:local"
+      - "kind load docker-image ghcr.io/hashgraph/solo-cheetah/cheetah:local -n {{.SOLO_CLUSTER_NAME}}"

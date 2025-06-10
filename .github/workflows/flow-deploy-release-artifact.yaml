@@ -130,7 +130,7 @@ jobs:
           SOURCE_DATE_EPOCH: ${{ steps.commit.outputs.source-date }}
         with:
           context: ${{ github.workspace }}
-          file: Dockerfile.CI
+          file: Dockerfile
           platforms: linux/amd64, linux/arm64
           build-args: |
             SOURCE_DATE_EPOCH=${{ steps.commit.outputs.source-date }}

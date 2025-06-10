@@ -19,6 +19,7 @@ profiling:
 #    interval: 5s
 pipelines:
   - name: record-stream-uploader
+    enabled: true
     stopOnError: true
     scanner:
       directory: /tmp/solo-cheetah/data/hgcapp/recordStreams #/tmp/solo-cheetah/data/hgcapp/recordStreams
@@ -54,6 +55,7 @@ pipelines:
           path: /tmp/solo-cheetah/data/backup/recordStreams
           mode: 0755
   - name: events-stream-uploader
+    enabled: false
     stopOnError: true
     scanner:
       directory: test/data/hgcapp/eventsStreams
@@ -88,6 +90,7 @@ pipelines:
           path: test/data/backup/eventsStreams
           mode: 0755
   - name: block-stream-uploader
+    enabled: false
     stopOnError: true
     scanner:
       directory: /tmp/solo-cheetah/data/hgcapp/blockstreams

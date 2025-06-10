@@ -17,6 +17,7 @@ log:
   level: "Debug"
 pipelines:
   - name: "TestPipeline"
+    enabled: true
     description: "A test pipeline"
     scanner:
       directory: "/test/dir"
@@ -26,6 +27,11 @@ pipelines:
       batchSize: 10
     processor:
       maxProcessors: 5
+      flushDelay: "100ms"
+      markerCheckConfig:
+        checkInterval: 100ms
+        minSize: 100
+        maxAttempts: 5
       fileExtensions: [".txt", ".data"]
       storage:
         s3:
@@ -37,17 +43,37 @@ pipelines:
           accessKey: "S3_ACCESS_KEY"
           secretKey: "S3_SECRET_KEY"
           useSSL: true
+  - name: "InactiveTestPipeline"
+    enabled: false 
 `), 0644)
 	require.NoError(t, err)
+
+	// Unset environment variables
+	_ = os.Unsetenv("S3_BUCKET")
+	_ = os.Unsetenv("S3_BUCKET_PREFIX")
+	_ = os.Unsetenv("CHEETAH_LOG_LEVEL")
+	_ = os.Unsetenv("S3_BUCKET_PREFIX2")
+	_ = os.Unsetenv("S3_ENDPOINT")
+	_ = os.Unsetenv("S3_REGION")
+	_ = os.Unsetenv("S3_ACCESS_KEY")
+	_ = os.Unsetenv("S3_SECRET_KEY")
+	_ = os.Unsetenv("S3_ENABLED")
+	_ = os.Unsetenv("S3_USE_SSL")
 
 	// Test valid initialization
 	err = Initialize(configFile)
 	require.NoError(t, err)
 	require.Equal(t, "Debug", config.Log.Level)
-	require.Equal(t, 1, len(config.Pipelines))
+	require.Equal(t, 2, len(config.Pipelines))
 	require.Equal(t, "TestPipeline", config.Pipelines[0].Name)
 	require.Equal(t, "/test/dir", config.Pipelines[0].Scanner.Directory)
 	require.Equal(t, "S3_ACCESS_KEY", config.Pipelines[0].Processor.Storage.S3.AccessKey)
+	require.Equal(t, "100ms", config.Pipelines[0].Processor.FlushDelay)
+	require.Equal(t, "100ms", config.Pipelines[0].Processor.MarkerCheckConfig.CheckInterval)
+	require.Equal(t, int64(100), config.Pipelines[0].Processor.MarkerCheckConfig.MinSize)
+	require.Equal(t, 5, config.Pipelines[0].Processor.MarkerCheckConfig.MaxAttempts)
+	require.Equal(t, true, config.Pipelines[0].Enabled)
+	require.Equal(t, false, config.Pipelines[1].Enabled)
 
 	_ = os.Setenv("S3_BUCKET", "bucket")
 	_ = os.Setenv("S3_BUCKET_PREFIX", "bucket-prefix")

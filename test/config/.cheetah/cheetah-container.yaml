@@ -16,6 +16,7 @@ profiling:
   maxSize: 100 # in MB
 pipelines:
   - name: record-stream-uploader
+    enabled: true
     stopOnError: true
     scanner:
       directory: /app/data/hgcapp/recordStreams

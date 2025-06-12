@@ -180,7 +180,7 @@ func TestGCS_Put(t *testing.T) {
 
 	pipeline := config.Get().Pipelines[0]
 
-	err = h.initClient(t, pipeline.Processor.Storage.S3, pipeline.Processor.Retry)
+	err = h.initClient(t, pipeline.Processor.Storage.GCS, pipeline.Processor.Retry)
 	require.NoError(t, err)
 
 	handler, err := storage.NewGCSWithS3("gcs-1", *h.bucketConfig, *h.retryConfig, filesDir, []string{".txt"})

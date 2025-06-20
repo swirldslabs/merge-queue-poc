@@ -5,7 +5,7 @@ go 1.24.2
 require (
 	github.com/gobwas/glob v0.2.3
 	github.com/google/uuid v1.6.0
-	github.com/minio/minio-go/v7 v7.0.92
+	github.com/minio/minio-go/v7 v7.0.94
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.9.1

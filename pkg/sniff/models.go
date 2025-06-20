@@ -21,14 +21,16 @@ type Stats struct {
 }
 
 type ProfilingConfig struct {
-	Enabled      bool
-	Interval     string
-	Directory    string
-	EnableServer bool
+	Enabled   bool
+	Interval  string
+	Directory string
+	// MaxSize is the maximum size (in MB) of a stats file before it is rolled.
 	// ServerHost is the Host for the pprof server.
 	ServerHost string
 	// ServerPort is the port for the pprof server.
 	ServerPort int
 	// MaxSize is the maximum size (in MB) of a stats file before it is rolled.
-	MaxSize int64
+	MaxSize           int64
+	EnablePprofServer bool
+	PprofPort         int
 }

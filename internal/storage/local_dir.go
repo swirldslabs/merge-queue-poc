@@ -20,7 +20,7 @@ type localDirectoryHandler struct {
 // ensureDirExists checks if the local directory exists. If it doesn't, it creates the directory.
 func (d *localDirectoryHandler) ensureDirExists(ctx context.Context) error {
 	if _, exists := fsx.PathExists(d.dirConfig.Path); exists {
-		logx.As().Debug().
+		logx.As().Trace().
 			Str("storage_type", d.Type()).
 			Str("path", d.dirConfig.Path).
 			Msg("Directory already exists and was previously checked")
@@ -53,6 +53,15 @@ func (d *localDirectoryHandler) syncWithDir(ctx context.Context, src string, des
 	var err error
 	var localChecksum, remoteChecksum string
 
+	// prepend the root directory to the destination path
+	dest = filepath.Join(d.dirConfig.Path, dest)
+
+	logx.As().Debug().
+		Str("src", src).
+		Str("dest", dest).
+		Str("id", d.Info()).
+		Msg("Starting file synchronization with local directory")
+
 	info, exists := fsx.PathExists(src)
 	if !exists {
 		logx.As().Error().
@@ -70,39 +79,55 @@ func (d *localDirectoryHandler) syncWithDir(ctx context.Context, src string, des
 		return nil, fmt.Errorf("failed to calculate local checksum: %w", err)
 	}
 
-	destPath := filepath.Join(d.dirConfig.Path, dest)
-	if destInfo, exists := fsx.PathExists(destPath); exists {
-		remoteChecksum, err = fsx.FileMD5(destPath)
+	logx.As().Debug().Str("src", src).Str("dest", dest).
+		Str("local_checksum", localChecksum).
+		Str("id", d.Info()).
+		Msg("Computed local file checksum")
+
+	if destInfo, exists := fsx.PathExists(dest); exists {
+		remoteChecksum, err = fsx.FileMD5(dest)
 		if err != nil {
 			logx.As().Error().
-				Str("dest", destPath).
+				Str("dest", dest).
 				Err(err).
 				Msg("Failed to calculate remote file checksum")
 			return nil, fmt.Errorf("failed to calculate remote checksum: %w", err)
 		}
 
+		logx.As().Debug().
+			Str("src", src).
+			Str("dest", dest).
+			Str("local_checksum", localChecksum).
+			Str("remote_checksum", remoteChecksum).
+			Str("id", d.Info()).
+			Msg("Computed remote file checksum")
+
 		if localChecksum == remoteChecksum {
-			logx.As().Debug().
+			logx.As().Info().
 				Str("src", src).
-				Str("dest", destPath).
-				Str("md5", remoteChecksum).
+				Str("dest", dest).
+				Str("local_checksum", localChecksum).
+				Str("remote_checksum", remoteChecksum).
 				Str("storage_type", d.Type()).
+				Str("id", d.Info()).
 				Msg("File already exists in the local directory, skipping copy")
-			return d.prepareUploadInfo(src, destPath, remoteChecksum, destInfo)
+			return d.prepareUploadInfo(src, dest, remoteChecksum, destInfo)
 		}
 	}
 
-	destDir := filepath.Dir(destPath)
+	destDir := filepath.Dir(dest)
 	if _, exists := fsx.PathExists(destDir); !exists {
 		logx.As().Debug().
 			Str("storage_type", d.Type()).
 			Str("path", destDir).
+			Str("id", d.Info()).
 			Msg("Destination directory does not exist, creating it")
 
 		if err := os.MkdirAll(destDir, d.dirConfig.Mode); err != nil {
 			logx.As().Error().
 				Str("storage_type", d.Type()).
 				Str("path", destDir).
+				Str("id", d.Info()).
 				Err(err).
 				Msg("Failed to create destination directory")
 			return nil, fmt.Errorf("failed to create destination directory: %w", err)
@@ -111,28 +136,31 @@ func (d *localDirectoryHandler) syncWithDir(ctx context.Context, src string, des
 
 	logx.As().Debug().
 		Str("src", src).
-		Str("dest", destPath).
+		Str("dest", dest).
 		Str("checksum", localChecksum).
 		Str("storage_type", d.Type()).
+		Str("id", d.Info()).
 		Msg("Copying file to the local directory")
 
-	if err = fsx.Copy(src, destPath, d.dirConfig.Mode); err != nil {
+	if err = fsx.Copy(src, dest, d.dirConfig.Mode); err != nil {
 		logx.As().Error().
 			Str("src", src).
-			Str("dest", destPath).
+			Str("dest", dest).
 			Err(err).
 			Msg("Failed to copy file to the local directory")
 		return nil, fmt.Errorf("failed to copy file: %w", err)
 	}
 
-	logx.As().Debug().
+	logx.As().Info().
 		Str("src", src).
-		Str("dest", destPath).
+		Str("dest", dest).
 		Str("checksum", localChecksum).
 		Str("storage_type", d.Type()).
+		Str("size", fmt.Sprintf("%d bytes", info.Size())).
+		Str("id", d.Info()).
 		Msg("File copied successfully to the local directory")
 
-	return d.prepareUploadInfo(src, destPath, localChecksum, info)
+	return d.prepareUploadInfo(src, dest, localChecksum, info)
 }
 
 // prepareUploadInfo prepares the upload information for a file.
@@ -148,17 +176,16 @@ func (d *localDirectoryHandler) prepareUploadInfo(src string, dest string, check
 }
 
 // NewLocalDir creates a new local directory storage handler.
-func NewLocalDir(id string, config config.LocalDirConfig, retryConfig config.RetryConfig, rootDir string, fileExtensions []string) (core.Storage, error) {
-	return newLocalDir(id, config, retryConfig, rootDir, fileExtensions)
+func NewLocalDir(id string, config config.LocalDirConfig, retryConfig config.RetryConfig, rootDir string) (core.Storage, error) {
+	return newLocalDir(id, config, retryConfig, rootDir)
 }
 
-func newLocalDir(id string, config config.LocalDirConfig, retryConfig config.RetryConfig, rootDir string, fileExtensions []string) (*localDirectoryHandler, error) {
+func newLocalDir(id string, config config.LocalDirConfig, retryConfig config.RetryConfig, rootDir string) (*localDirectoryHandler, error) {
 	l := &localDirectoryHandler{
 		handler: &handler{
-			id:             id,
-			storageType:    TypeLocalDir,
-			fileExtensions: fileExtensions,
-			rootDir:        rootDir,
+			id:          id,
+			storageType: TypeLocalDir,
+			rootDir:     rootDir,
 		},
 		dirConfig:   config,
 		retryConfig: retryConfig,
@@ -168,7 +195,7 @@ func newLocalDir(id string, config config.LocalDirConfig, retryConfig config.Ret
 	l.handler.preSync = l.ensureDirExists
 	l.handler.syncFile = l.syncWithDir
 
-	logx.As().Debug().
+	logx.As().Trace().
 		Str("id", l.Info()).
 		Str("storage_type", TypeLocalDir).
 		Str("path", config.Path).

@@ -1,6 +1,6 @@
 log:
   fileLogging: true
-  level: Info
+  level: debug
   directory: test/logs
   fileName: cheetah.log
   maxSize: 100 # in MB
@@ -10,10 +10,11 @@ profiling:
   enabled: true
   interval: 5s
   directory: test/stats
-  enableServer: true
   serverHost: 127.0.0.1
   serverPort: 6060
   maxSize: 100 # in MB
+  enablePprofServer: true
+  pprofPort: 6061
 #metrics: # TODO
 #    enabled: true
 #    interval: 5s
@@ -27,8 +28,12 @@ pipelines:
       interval: 100ms
       batchSize: 1000
     processor: # each processor can upload to multiple storages concurrently or sequentially
-      maxProcessors: 20
-      fileExtensions: [ ".rcd", ".rcd_sig" ]
+      maxProcessors: 30
+      fileMatcherConfigs:
+        - matcherType: basic
+          patterns: [".rcd.gz", ".rcd_sig"]
+        - matcherType: sequential
+          patterns: ["sidecar/{{.markerName}}_##.rcd.gz"]
       retry:
         limit: 5
       storage:
@@ -51,77 +56,6 @@ pipelines:
           secretKey: GCS_SECRET_KEY # use this env variable
           useSsl: true
         localDir: # not needed, it is used for dev/testing
-          enabled: true
+          enabled: false
           path: /tmp/solo-cheetah/data/backup/recordStreams
-          mode: 0755
-  - name: events-stream-uploader
-    enabled: false
-    stopOnError: true
-    scanner:
-      directory: test/data/hgcapp/eventsStreams
-      pattern: ".evts_sig"
-      interval: 100ms
-    processor: # each processor can upload to multiple storages concurrently or sequentially
-      maxProcessors: 10
-      fileExtensions: [ ".evts", ".evts_sig" ]
-      retry:
-        limit: 5
-      storage:
-        s3:
-          enabled: false
-          bucket: cheetah
-          region: us-east-1
-          prefix: streams/events-streams
-          endpoint: localhost:9000
-          accessKey: S3_ACCESS_KEY # use this env variable
-          secretKey: S3_SECRET_KEY # use this env variable
-          useSsl: false
-        gcs:
-          enabled: false
-          bucket: lenin-test
-          region: us-east-1
-          prefix: cheetah/streams/events-streams
-          endpoint: storage.googleapis.com
-          accessKey: GCS_ACCESS_KEY # use this env variable
-          secretKey: GCS_SECRET_KEY # use this env variable
-          useSsl: true
-        localDir: # not needed, it is used for dev/testing
-          enabled: true
-          path: test/data/backup/eventsStreams
-          mode: 0755
-  - name: block-stream-uploader
-    enabled: false
-    stopOnError: true
-    scanner:
-      directory: /tmp/solo-cheetah/data/hgcapp/blockstreams
-      pattern: ".mf"
-      interval: 100ms
-      batchSize: 1000
-    processor: # each processor can upload to multiple storages concurrently or sequentially
-      maxProcessors: 20
-      fileExtensions: [ ".blk.gz" ]
-      retry:
-        limit: 5
-      storage:
-        s3:
-          enabled: true
-          bucket: cheetah
-          region: us-east-1
-          prefix: streams/block-streams
-          endpoint: localhost:9000
-          accessKey: S3_ACCESS_KEY # use this env variable
-          secretKey: S3_SECRET_KEY # use this env variable
-          useSsl: false
-        gcs:
-          enabled: false
-          bucket: lenin-test
-          region: us-east-1
-          prefix: cheetah/streams/block-streams
-          endpoint: storage.googleapis.com
-          accessKey: GCS_ACCESS_KEY # use this env variable
-          secretKey: GCS_SECRET_KEY # use this env variable
-          useSsl: true
-        localDir: # not needed, it is used for dev/testing
-          enabled: false
-          path: /tmp/solo-cheetah/data/backup/block-streams
           mode: 0755

@@ -10,10 +10,11 @@ profiling:
   enabled: true
   interval: 5s
   directory: test/stats
-  enableServer: true
   serverHost: localhost
   serverPort: 6060
   maxSize: 100 # in MB
+  enablePprofServer: true
+  pprofPort: 6061
 #metrics: # TODO
 #    enabled: true
 #    interval: 5s
@@ -26,8 +27,12 @@ pipelines:
       interval: 100ms
       batchSize: 1000
     processor: # each processor can upload to multiple storages concurrently or sequentially
-      maxProcessors: 10
-      fileExtensions: [ ".rcd", ".rcd_sig" ]
+      maxProcessors: 30
+      fileMatcherConfigs:
+        - matcherType: basic
+          patterns: [".rcd.gz", ".rcd_sig"]
+        - matcherType: sequential
+          patterns: ["sidecar/{{.markerName}}_##.rcd.gz"]
       retry:
         limit: 5
       storage:

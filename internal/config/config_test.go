@@ -31,8 +31,12 @@ pipelines:
       markerCheckConfig:
         checkInterval: 100ms
         minSize: 100
-        maxAttempts: 5
-      fileExtensions: [".txt", ".data"]
+        maxAttempts: 5 
+      fileMatcherConfigs:
+        - matcherType: glob
+          patterns: [".txt", ".log"]
+        - matcherType: sidecar 
+          patterns: [".gz", ".log"]
       storage:
         s3:
           enabled: false 
@@ -74,6 +78,7 @@ pipelines:
 	require.Equal(t, 5, config.Pipelines[0].Processor.MarkerCheckConfig.MaxAttempts)
 	require.Equal(t, true, config.Pipelines[0].Enabled)
 	require.Equal(t, false, config.Pipelines[1].Enabled)
+	require.ElementsMatch(t, []string{".txt", ".log"}, config.Pipelines[0].Processor.FileMatcherConfigs[0].Patterns)
 
 	_ = os.Setenv("S3_BUCKET", "bucket")
 	_ = os.Setenv("S3_BUCKET_PREFIX", "bucket-prefix")

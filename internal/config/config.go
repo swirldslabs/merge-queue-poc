@@ -55,12 +55,12 @@ type ProcessorConfig struct {
 	Retry *RetryConfig
 	// Storage contains the storage configuration.
 	Storage *StorageConfig
-	// FileExtensions is a list of file extensions to process.
-	FileExtensions []string
 	// FlushDelay specifies how long to wait to allow data files to flush before starting uploads (e.g., "150ms").
 	FlushDelay string
 	// MarkerCheckConfig contains the configuration for checking marker files before starting to upload.
 	MarkerCheckConfig *MarkerCheckConfig
+	// FileMatcherConfigs is a list of file matcher config to apply to find files to be processed for a marker file
+	FileMatcherConfigs []FileMatcherConfig
 }
 
 type MarkerCheckConfig struct {
@@ -118,6 +118,12 @@ type LocalDirConfig struct {
 	Mode os.FileMode
 }
 
+type FileMatcherConfig struct {
+	MatcherType string
+	// Patterns is a list of file patterns to process when a marker file is found.
+	Patterns []string
+}
+
 var config = Config{
 	Log: &logx.LoggingConfig{
 		Level:          "Info",
@@ -166,6 +172,10 @@ func Initialize(path string) error {
 
 // initializeNestedStructs ensures all nested structs are initialized.
 func initializeNestedStructs() {
+	if config.Profiling == nil {
+		config.Profiling = &sniff.ProfilingConfig{Enabled: false}
+	}
+
 	for _, pipeline := range config.Pipelines {
 		if pipeline.Scanner == nil {
 			pipeline.Scanner = &ScannerConfig{}
@@ -256,6 +266,16 @@ func Get() Config {
 	return config
 }
 
-func Set(c *Config) {
+func Set(c *Config) error {
 	config = *c
+	initializeNestedStructs()
+
+	// Set values for the pipeline configuration using env vars.
+	// We need this because currently viper won't override the array configuration elements using the env vars.
+	err := overridePipelineConfigWithEnvVars()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

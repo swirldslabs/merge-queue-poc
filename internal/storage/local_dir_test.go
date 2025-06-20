@@ -16,7 +16,7 @@ func TestLocalDirectoryHandler_EnsureDirExists(t *testing.T) {
 	h, err := newLocalDir("test", config.LocalDirConfig{
 		Path: tempDir,
 		Mode: 0755,
-	}, config.RetryConfig{Limit: 1}, tempDir, []string{".txt", ".log"})
+	}, config.RetryConfig{Limit: 1}, tempDir)
 	assert.NoError(t, err)
 
 	// Test when directory already exists
@@ -51,7 +51,7 @@ func TestLocalDirectoryHandler_SyncWithDir(t *testing.T) {
 	h, err := newLocalDir("test", config.LocalDirConfig{
 		Path: destDir,
 		Mode: 0755,
-	}, config.RetryConfig{Limit: 1}, tempDir, []string{".txt", ".not-exist"})
+	}, config.RetryConfig{Limit: 1}, tempDir)
 	assert.NoError(t, err)
 
 	// Test file synchronization

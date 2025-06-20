@@ -20,7 +20,7 @@ func (m *MockLogger) Info() *MockLogger {
 	return m
 }
 
-func (m *MockLogger) Debug() *MockLogger {
+func (m *MockLogger) Trace() *MockLogger {
 	return m
 }
 
@@ -34,11 +34,11 @@ func (m *MockLogger) Msg(msg string) {
 
 func TestSniffer_StartAndStop(t *testing.T) {
 	opts := &ProfilingConfig{
-		Enabled:      true,
-		EnableServer: false,
-		Interval:     "1s",
-		Directory:    t.TempDir(),
-		MaxSize:      1,
+		Enabled:           true,
+		EnablePprofServer: false,
+		Interval:          "1s",
+		Directory:         t.TempDir(),
+		MaxSize:           1,
 	}
 
 	s := &Sniffer{

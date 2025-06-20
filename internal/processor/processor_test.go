@@ -1,4 +1,4 @@
-package core
+package processor
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.hedera.com/solo-cheetah/internal/config"
+	"golang.hedera.com/solo-cheetah/internal/core"
+	"golang.hedera.com/solo-cheetah/internal/matcher"
 	"golang.hedera.com/solo-cheetah/pkg/fsx"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"os"
@@ -17,7 +19,7 @@ import (
 type mockStorage struct {
 	id          string
 	storageType string
-	putFunc     func(ctx context.Context, item ScannerResult, stored chan<- StorageResult)
+	putFunc     func(ctx context.Context, item core.ScannerResult, candidates []string, stored chan<- core.StorageResult)
 }
 
 func (m *mockStorage) Info() string {
@@ -28,17 +30,16 @@ func (m *mockStorage) Type() string {
 	return m.storageType
 }
 
-func (m *mockStorage) Put(ctx context.Context, item ScannerResult, stored chan<- StorageResult) {
+func (m *mockStorage) Put(ctx context.Context, item core.ScannerResult, candidates []string, stored chan<- core.StorageResult) {
 	if m.putFunc != nil {
-		m.putFunc(ctx, item, stored)
+		m.putFunc(ctx, item, candidates, stored)
 	} else {
 		// Default behavior for testing
-		stored <- StorageResult{
-			Error:   nil,
-			Src:     item.Path,
-			Dest:    []string{"mock/destination"},
-			Type:    m.storageType,
-			Handler: m.id,
+		stored <- core.StorageResult{
+			Error:      nil,
+			MarkerPath: item.Path,
+			Type:       m.storageType,
+			Handler:    m.id,
 		}
 
 		logx.As().Info().Msg(fmt.Sprintf("Mock storage %s processed file %s", m.id, item.Path))
@@ -61,32 +62,39 @@ func TestProcess_Upload_Success(t *testing.T) {
 	info2, err := os.Stat(file2)
 	require.NoError(t, err)
 
-	items := make(chan ScannerResult, 2)
-	items <- ScannerResult{Path: file1, Info: info1}
-	items <- ScannerResult{Path: file2, Info: info2}
+	items := make(chan core.ScannerResult, 2)
+	items <- core.ScannerResult{Path: file1, Info: info1}
+	items <- core.ScannerResult{Path: file2, Info: info2}
 	close(items)
 
 	ctx := context.Background()
-	storages := []Storage{
+	storages := []core.Storage{
 		&mockStorage{id: "mock-storage-1", storageType: "S3"},
 	}
-	fileExtensions := []string{".txt"}
+
 	delay := 150 * time.Millisecond
 	mc := markerCheckConfig{
 		checkInterval: DefaultMarkerFileCheckInterval,
 		maxAttempts:   DefaultMarkerFileCheckMaxAttempts,
 		minSize:       DefaultMarkerFileCheckMinSize,
 	}
-	p, err := newProcessor("test-processor", storages, fileExtensions, delay, mc)
+
+	fileMatcherConfigs := []config.FileMatcherConfig{
+		{
+			MatcherType: matcher.FileMatcherBasic,
+			Patterns:    []string{".txt"},
+		},
+	}
+	p, err := newProcessor("test-processor", storages, fileMatcherConfigs, delay, mc)
 	require.NoError(t, err)
 
 	stored := p.upload(ctx, items)
 
-	var results []ProcessorResult
+	var results []core.ProcessorResult
 	for result := range stored {
 		require.NoError(t, result.Error)
 		results = append(results, result)
-		require.Contains(t, fileExtensions, filepath.Ext(result.Path))
+		require.Contains(t, fileMatcherConfigs[0].Patterns, filepath.Ext(result.Path))
 	}
 
 	require.Len(t, results, 2)
@@ -99,7 +107,7 @@ func TestProcess_Upload_Failure(t *testing.T) {
 		_ = os.RemoveAll(tempDir)
 	}()
 
-	items := make(chan ScannerResult, 3)
+	items := make(chan core.ScannerResult, 3)
 	testFiles := []string{"file1.txt", "file2.txt"}
 	for _, file := range testFiles {
 		filePath := filepath.Join(tempDir, file)
@@ -110,12 +118,12 @@ func TestProcess_Upload_Failure(t *testing.T) {
 		require.NoError(t, err)
 
 		select {
-		case items <- ScannerResult{Path: filePath, Info: info}:
+		case items <- core.ScannerResult{Path: filePath, Info: info}:
 		}
 	}
 
 	// add an invalid file, which should be ignored
-	items <- ScannerResult{Path: filepath.Join(tempDir, "invalid.txt")}
+	items <- core.ScannerResult{Path: filepath.Join(tempDir, "invalid.txt")}
 	close(items)
 
 	// Create a context and result channel
@@ -123,22 +131,28 @@ func TestProcess_Upload_Failure(t *testing.T) {
 	defer cancel()
 
 	// Execute the upload function
-	storages := []Storage{
-		&mockStorage{id: "mock-storage-1", storageType: "S3", putFunc: func(ctx context.Context, item ScannerResult, stored chan<- StorageResult) {
-			// Default behavior for testing
-			stored <- StorageResult{
-				Error:   fmt.Errorf("failed to upload"),
-				Src:     item.Path,
-				Dest:    []string{},
-				Type:    "S3",
-				Handler: "mock-storage-1",
-			}
-		}},
+	storages := []core.Storage{
+		&mockStorage{id: "mock-storage-1", storageType: "S3",
+			putFunc: func(ctx context.Context, item core.ScannerResult, candidates []string, stored chan<- core.StorageResult) {
+				// Default behavior for testing
+				stored <- core.StorageResult{
+					Error:      fmt.Errorf("failed to upload"),
+					MarkerPath: item.Path,
+					Type:       "S3",
+					Handler:    "mock-storage-1",
+				}
+			}},
 	}
-	fileExtensions := []string{".txt"}
+
 	delay := time.Millisecond * 150
 	mc := markerCheckConfig{}
-	p, err := newProcessor("test-processor", storages, fileExtensions, delay, mc)
+	fileMatcherConfigs := []config.FileMatcherConfig{
+		{
+			MatcherType: matcher.FileMatcherBasic,
+			Patterns:    []string{".txt"},
+		},
+	}
+	p, err := newProcessor("test-processor", storages, fileMatcherConfigs, delay, mc)
 	assert.NoError(t, err)
 	stored := p.upload(ctx, items)
 
@@ -150,33 +164,6 @@ func TestProcess_Upload_Failure(t *testing.T) {
 	}
 
 	assert.Equal(t, 2, totalResults)
-}
-
-func TestProcessor_PrepareRemovalCandidates(t *testing.T) {
-	// Setup: Create a processor with specific file extensions
-	fileExtensions := []string{".rcd_sig", ".rcd", ".log"}
-	p := &processor{
-		id:             "test-processor",
-		fileExtensions: fileExtensions,
-	}
-
-	// Mock ProcessorResult
-	resp := ProcessorResult{
-		Path: "/tmp/testfile.rcd_sig",
-	}
-
-	// Call prepareRemovalCandidates
-	candidates := p.prepareRemovalCandidates(resp)
-
-	// Expected removal candidates
-	expectedCandidates := []string{
-		"/tmp/testfile.rcd_sig",
-		"/tmp/testfile.rcd",
-		"/tmp/testfile.log",
-	}
-
-	// Verify the results
-	assert.ElementsMatch(t, expectedCandidates, candidates)
 }
 
 func TestProcess_Remove_Success(t *testing.T) {
@@ -195,18 +182,23 @@ func TestProcess_Remove_Success(t *testing.T) {
 
 	// Create a context and result channel
 	ctx := context.Background()
-	stored := make(chan ProcessorResult, 2)
+	stored := make(chan core.ProcessorResult, 2)
 
 	// Simulate successful upload results
-	stored <- ProcessorResult{Path: testFile1, Error: nil}
-	stored <- ProcessorResult{Path: testFile2, Error: nil}
+	stored <- core.ProcessorResult{Path: testFile1, Error: nil}
+	stored <- core.ProcessorResult{Path: testFile2, Error: nil}
 	close(stored)
 
 	// Create a processor instance
-	fileExtensions := []string{".txt"}
 	delay := time.Millisecond * 150
 	mc := markerCheckConfig{}
-	p, err := newProcessor("test-processor", nil, fileExtensions, delay, mc)
+	fileMatcherConfigs := []config.FileMatcherConfig{
+		{
+			MatcherType: matcher.FileMatcherBasic,
+			Patterns:    []string{".txt"},
+		},
+	}
+	p, err := newProcessor("test-processor", nil, fileMatcherConfigs, delay, mc)
 	assert.NoError(t, err)
 
 	// Execute the remove function
@@ -240,18 +232,23 @@ func TestProcess_Remove_Failure(t *testing.T) {
 
 	// Create a context and result channel
 	ctx := context.Background()
-	stored := make(chan ProcessorResult, 2)
+	stored := make(chan core.ProcessorResult, 2)
 
 	// Simulate one successful and one failed upload result
-	stored <- ProcessorResult{Path: testFile1, Error: nil}
-	stored <- ProcessorResult{Path: testFile2, Error: fmt.Errorf("upload failed")}
+	stored <- core.ProcessorResult{Path: testFile1, Error: nil}
+	stored <- core.ProcessorResult{Path: testFile2, Error: fmt.Errorf("upload failed")}
 	close(stored)
 
 	// Create a processor instance
-	fileExtensions := []string{".txt"}
 	delay := time.Millisecond * 150
 	mc := markerCheckConfig{}
-	p, err := newProcessor("test-processor", nil, fileExtensions, delay, mc)
+	fileMatcherConfigs := []config.FileMatcherConfig{
+		{
+			MatcherType: matcher.FileMatcherBasic,
+			Patterns:    []string{".txt"},
+		},
+	}
+	p, err := newProcessor("test-processor", nil, fileMatcherConfigs, delay, mc)
 	assert.NoError(t, err)
 
 	// Execute the remove function
@@ -273,13 +270,18 @@ func TestProcess_Remove_Failure(t *testing.T) {
 }
 
 func TestNewProcessor_DelayParsing(t *testing.T) {
-	var storages []Storage
-	fileExtensions := []string{".txt"}
+	var storages []core.Storage
+	fileMatcherConfigs := []config.FileMatcherConfig{
+		{
+			MatcherType: matcher.FileMatcherBasic,
+			Patterns:    []string{".txt"},
+		},
+	}
 
 	// Valid flushDelay
 	pc := &config.ProcessorConfig{
-		FlushDelay:     "250ms",
-		FileExtensions: fileExtensions,
+		FlushDelay:         "250ms",
+		FileMatcherConfigs: fileMatcherConfigs,
 	}
 
 	p, err := NewProcessor("test", storages, pc)
@@ -339,7 +341,7 @@ func TestIntegration_WaitForMarkerFileToBeReady(t *testing.T) {
 	}()
 
 	ctx := context.Background()
-	info, err = p.waitForMarkerFileToBeReady(ctx, ScannerResult{Path: markerPath, Info: info})
+	info, err = p.waitForMarkerFileToBeReady(ctx, core.ScannerResult{Path: markerPath, Info: info})
 	require.NoError(t, err)
 	require.NotNil(t, info)
 
@@ -373,11 +375,78 @@ func TestProcessor_WaitForMarkerFileToBeReady_MaxAttempts(t *testing.T) {
 	require.NoError(t, err)
 
 	start := time.Now()
-	info, err = p.waitForMarkerFileToBeReady(context.Background(), ScannerResult{Path: markerPath, Info: info})
+	info, err = p.waitForMarkerFileToBeReady(context.Background(), core.ScannerResult{Path: markerPath, Info: info})
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	elapsed := time.Since(start)
 
 	require.NoError(t, err, "Should not return error, just continue after maxAttempts")
 	require.GreaterOrEqual(t, elapsed, 20*time.Millisecond, "Should wait for at least two intervals")
+}
+
+func TestProcessor_PrepareRemovalCandidates_DeduplicationAndOrder(t *testing.T) {
+	p := &processor{}
+
+	resp := core.ProcessorResult{
+		Path: "/tmp/file1.txt",
+		Result: map[string]*core.StorageResult{
+			"s3": {
+				Error: nil,
+				UploadResults: []*core.UploadInfo{
+					{Src: "/tmp/file1.txt"},
+					{Src: "/tmp/file2.txt"},
+				},
+			},
+			"gcs": {
+				Error: nil,
+				UploadResults: []*core.UploadInfo{
+					{Src: "/tmp/file2.txt"},
+					{Src: "/tmp/file3.txt"},
+				},
+			},
+		},
+	}
+
+	got := p.prepareRemovalCandidates(resp)
+	want := []string{"/tmp/file1.txt", "/tmp/file2.txt", "/tmp/file3.txt"}
+	assert.Equal(t, want, got)
+}
+
+func TestProcessor_PrepareRemovalCandidates_SkipErroredStorage(t *testing.T) {
+	p := &processor{}
+
+	resp := core.ProcessorResult{
+		Path: "/tmp/file1.txt",
+		Result: map[string]*core.StorageResult{
+			"s3": {
+				Error: fmt.Errorf("upload failed"),
+				UploadResults: []*core.UploadInfo{
+					{Src: "/tmp/file2.txt"},
+				},
+			},
+			"gcs": {
+				Error: nil,
+				UploadResults: []*core.UploadInfo{
+					{Src: "/tmp/file3.txt"},
+				},
+			},
+		},
+	}
+
+	got := p.prepareRemovalCandidates(resp)
+	want := []string{"/tmp/file1.txt", "/tmp/file3.txt"}
+	assert.Equal(t, want, got)
+}
+
+func TestProcessor_PrepareRemovalCandidates_EmptyResult(t *testing.T) {
+	p := &processor{}
+
+	resp := core.ProcessorResult{
+		Path:   "/tmp/file1.txt",
+		Result: map[string]*core.StorageResult{},
+	}
+
+	got := p.prepareRemovalCandidates(resp)
+	want := []string{"/tmp/file1.txt"}
+	assert.Equal(t, want, got)
 }

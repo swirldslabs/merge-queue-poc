@@ -8,6 +8,7 @@ import (
 	"golang.hedera.com/solo-cheetah/pkg/fsx"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path"
 	"runtime"
@@ -80,15 +81,25 @@ func (s *Sniffer) Start(ctx context.Context) error {
 		s.nextRotationHour = &nextRotation
 	}
 
-	if s.opts.EnableServer {
-		if err := s.startSnapshotServer(); err != nil {
-			return err
-		}
+	if err := s.startSnapshotServer(); err != nil {
+		return err
+	}
+
+	if s.opts.EnablePprofServer && s.opts.PprofPort > 0 {
+		// Start pprof server if enabled
+		go func() {
+			pprofAddr := fmt.Sprintf("%s:%d", s.opts.ServerHost, s.opts.PprofPort)
+			logx.As().Info().Msg(fmt.Sprintf("Starting pprof server on %s", pprofAddr))
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logx.As().Error().Err(err).Msg("pprof server failed")
+			}
+		}()
+
 	}
 
 	go func() {
 		<-ctx.Done() // check if the parent context is canceled
-		logx.As().Debug().Msg("Context canceled, stopping profiling data capture...")
+		logx.As().Trace().Msg("Context canceled, stopping profiling data capture...")
 		s.Stop()
 	}()
 
@@ -198,7 +209,6 @@ func (s *Sniffer) startCapturingStats() error {
 		}
 	}()
 
-	logx.As().Info().Str("interval", s.opts.Interval).Str("file", statsFile).Msg("Started runtime stats capture")
 	return nil
 }
 

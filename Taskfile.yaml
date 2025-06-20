@@ -42,6 +42,7 @@ tasks:
     deps:
       - "vendor"
     cmds:
+      - task: "clean"
       - task: "generate"
       - task: "build:cheetah:all"
     sources:
@@ -102,7 +103,7 @@ tasks:
   run:gen-record-streams: # for testing
     cmds:
       - "mkdir -p {{.TempRecordStreamsDir}}"
-      - "test/scripts/gen.sh {{.TempRecordStreamsDir}} rcd_sig rcd 100 0.1 600 100"
+      - "test/scripts/gen.sh {{.TempRecordStreamsDir}} rcd_sig rcd.gz 100 0.1 3000 100" # 3000 * 100 * 2 = 600K files
 
   run:gen-events-streams: # for testing
     cmds:

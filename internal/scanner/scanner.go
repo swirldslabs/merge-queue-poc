@@ -1,9 +1,10 @@
-package core
+package scanner
 
 import (
 	"context"
 	"fmt"
-	"golang.hedera.com/solo-cheetah/internal/config"
+	"github.com/google/uuid"
+	"golang.hedera.com/solo-cheetah/internal/core"
 	"golang.hedera.com/solo-cheetah/pkg/fsx"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"os"
@@ -47,13 +48,14 @@ func (s *scanner) Info() string {
 // Notes:
 //   - The returned channel is closed after all matching files have been processed or if the context is canceled.
 //   - Errors encountered during the scan are sent to the error channel but do not stop the scanning process.
-func (s *scanner) Scan(ctx context.Context, ech chan<- error) <-chan ScannerResult {
-	items := make(chan ScannerResult)
+func (s *scanner) Scan(ctx context.Context, ech chan<- error) <-chan core.ScannerResult {
+	counter := 0
+	items := make(chan core.ScannerResult)
 	go func() {
 		defer s.walker.End()
 		defer close(items)
 		err := s.walker.Start(s.directory, func(path string, info os.FileInfo, err error) error {
-			logx.As().Debug().Str("path", path).Msg("scanning path")
+			logx.As().Trace().Str("path", path).Msg("scanning path")
 
 			if err != nil {
 				if os.IsNotExist(err) {
@@ -74,7 +76,7 @@ func (s *scanner) Scan(ctx context.Context, ech chan<- error) <-chan ScannerResu
 
 			ext := filepath.Ext(path)
 			if !info.Mode().IsRegular() || ext != s.pattern {
-				logx.As().Debug().
+				logx.As().Trace().
 					Str("path", path).
 					Str("ext", ext).
 					Str("marker_pattern", s.pattern).
@@ -84,17 +86,22 @@ func (s *scanner) Scan(ctx context.Context, ech chan<- error) <-chan ScannerResu
 				return nil // ignore non-regular files and non-matching extensions
 			}
 
+			counter++
+			traceId := fmt.Sprintf("%v-%04d-%s", s.id, counter, uuid.New())
 			logx.As().Info().
 				Str("path", path).
 				Str("scanner", s.Info()).
+				Str("trace_id", traceId).
 				Str("ext", filepath.Ext(path)).
 				Str("pattern", s.pattern).
+				Int64("size", info.Size()).
 				Msg("Scanner found marker file")
 
 			select {
-			case items <- ScannerResult{Path: path, Info: info}:
-				logx.As().Debug().
+			case items <- core.ScannerResult{Path: path, Info: info, TraceId: traceId}:
+				logx.As().Trace().
 					Str("marker", path).
+					Str("trace_id", traceId).
 					Str("scanner", s.Info()).
 					Msg("Scanner added marker file to the queue")
 			case <-ctx.Done():
@@ -134,13 +141,13 @@ func (s *scanner) Scan(ctx context.Context, ech chan<- error) <-chan ScannerResu
 // Notes:
 //   - The scanner uses a Walker to traverse the directory tree.
 //   - The batchSize parameter controls how many directory entries are read in a single operation.
-func NewScanner(id string, rootDir string, pattern string, batchSize int) (Scanner, error) {
+func NewScanner(id string, rootDir string, pattern string, batchSize int) (core.Scanner, error) {
 	return newScanner(id, rootDir, pattern, batchSize)
 }
 
 func newScanner(id string, rootDir string, pattern string, batchSize int) (*scanner, error) {
 	// if pattern contains '*' or '?', it is not a supported pattern. We only allow extension like .rcd_sig
-	if !config.IsValidExtension(pattern) {
+	if !core.IsFileExtension(pattern) {
 		return nil, fmt.Errorf("invalid file extension '%s'. use file extension without * or regex characters; i.e. '.rcd.gz'", pattern)
 	}
 

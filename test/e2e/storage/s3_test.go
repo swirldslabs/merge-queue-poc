@@ -76,7 +76,7 @@ func (h *s3TestHandler) createMockFile(t *testing.T, filePath string) string {
 
 	return filePath
 }
-func (h *s3TestHandler) upload(t *testing.T, handler core.Storage, files []string) <-chan core.StorageResult {
+func (h *s3TestHandler) upload(t *testing.T, handler core.Storage, marker core.ScannerResult, files []string) <-chan core.StorageResult {
 
 	// Prepare the ScannerResult
 	stored := make(chan core.StorageResult)
@@ -84,9 +84,7 @@ func (h *s3TestHandler) upload(t *testing.T, handler core.Storage, files []strin
 	// Test Put method
 	go func() {
 		defer close(stored)
-		for _, file := range files {
-			handler.Put(context.Background(), core.ScannerResult{Path: file}, stored)
-		}
+		handler.Put(context.Background(), marker, files, stored)
 	}()
 
 	return stored
@@ -106,14 +104,14 @@ func TestS3_Put_Missing_File_Error(t *testing.T) {
 	err = h.initClient(t, pipeline.Processor.Storage.S3, pipeline.Processor.Retry)
 	require.NoError(t, err)
 
-	handler, err := storage.NewS3("s3-1", *h.bucketConfig, *h.retryConfig, filesDir, []string{".txt"})
+	handler, err := storage.NewS3("s3-1", *h.bucketConfig, *h.retryConfig, filesDir)
 	require.NoError(t, err)
 
-	file1 := h.createMockFile(t, path.Join(h.filesDir, "file1.txt"))
-	file2 := h.createMockFile(t, path.Join(h.filesDir, "file2.txt"))
-	files := []string{file1, file2, path.Join(h.filesDir, "missing.txt")}
-
-	stored := h.upload(t, handler, files)
+	file1 := h.createMockFile(t, path.Join(h.filesDir, "marker.mf"))
+	file2 := h.createMockFile(t, path.Join(h.filesDir, "file1.txt"))
+	files := []string{file1, file2}
+	marker := core.ScannerResult{Path: path.Join(h.filesDir, "marker.mf")}
+	stored := h.upload(t, handler, marker, files)
 
 	// Verify the result
 	found := false
@@ -122,7 +120,7 @@ func TestS3_Put_Missing_File_Error(t *testing.T) {
 			require.Contains(t, result.Error.Error(), "candidate file is missing")
 			found = true
 		} else {
-			require.True(t, result.Src != files[2], "Expected error for missing file, but got result: %v", result)
+			require.True(t, result.MarkerPath != files[2], "Expected error for missing file, but got result: %v", result)
 		}
 	}
 	require.True(t, found)
@@ -148,14 +146,14 @@ func TestS3_Put(t *testing.T) {
 	err = h.initClient(t, pipeline.Processor.Storage.S3, pipeline.Processor.Retry)
 	require.NoError(t, err)
 
-	handler, err := storage.NewS3("s3-1", *h.bucketConfig, *h.retryConfig, filesDir, []string{".txt"})
+	handler, err := storage.NewS3("s3-1", *h.bucketConfig, *h.retryConfig, filesDir)
 	require.NoError(t, err)
 
-	file1 := h.createMockFile(t, path.Join(h.filesDir, "file1.txt"))
-	file2 := h.createMockFile(t, path.Join(h.filesDir, "file2.txt"))
+	file1 := h.createMockFile(t, path.Join(h.filesDir, "marker.mf"))
+	file2 := h.createMockFile(t, path.Join(h.filesDir, "file1.txt"))
 	files := []string{file1, file2}
-
-	stored := h.upload(t, handler, files)
+	marker := core.ScannerResult{Path: path.Join(h.filesDir, "marker.mf")}
+	stored := h.upload(t, handler, marker, files)
 
 	// Verify the result
 	for result := range stored {
@@ -183,14 +181,14 @@ func TestGCS_Put(t *testing.T) {
 	err = h.initClient(t, pipeline.Processor.Storage.GCS, pipeline.Processor.Retry)
 	require.NoError(t, err)
 
-	handler, err := storage.NewGCSWithS3("gcs-1", *h.bucketConfig, *h.retryConfig, filesDir, []string{".txt"})
+	handler, err := storage.NewGCSWithS3("gcs-1", *h.bucketConfig, *h.retryConfig, filesDir)
 	require.NoError(t, err)
 
-	file1 := h.createMockFile(t, path.Join(h.filesDir, "file1.txt"))
-	file2 := h.createMockFile(t, path.Join(h.filesDir, "file2.txt"))
+	file1 := h.createMockFile(t, path.Join(h.filesDir, "marker.mf"))
+	file2 := h.createMockFile(t, path.Join(h.filesDir, "file1.txt"))
 	files := []string{file1, file2}
-
-	stored := h.upload(t, handler, files)
+	marker := core.ScannerResult{Path: path.Join(h.filesDir, "marker.mf")}
+	stored := h.upload(t, handler, marker, files)
 
 	// Verify the result
 	for result := range stored {

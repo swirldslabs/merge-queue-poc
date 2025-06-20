@@ -7,13 +7,15 @@ log:
   maxBackups: 10
   maxAge: 30
 profiling:
-  enabled: true
+  enabled: false
   interval: 5s
   directory: /app/stats
   enableServer: true
   serverHost: 0.0.0.0
   serverPort: 6060
   maxSize: 100 # in MB
+  enablePprofServer: true
+  pprofPort: 6061
 pipelines:
   - name: record-stream-uploader
     enabled: true
@@ -24,8 +26,12 @@ pipelines:
       interval: 100ms
       batchSize: 1000
     processor: # each processor can upload to multiple storages concurrently or sequentially
-      maxProcessors: 10
-      fileExtensions: [ ".rcd", ".rcd_sig" ]
+      maxProcessors: 30
+      fileMatcherConfigs:
+        - matcherType: basic
+          patterns: [".rcd.gz", ".rcd_sig"]
+        - matcherType: sequential
+          patterns: ["sidecar/{{.markerName}}_##.rcd.gz"]
       retry:
         limit: 5
       storage:
@@ -59,7 +65,9 @@ pipelines:
       interval: 100ms
     processor: # each processor can upload to multiple storages concurrently or sequentially
       maxProcessors: 10
-      fileExtensions: [ ".evts", ".evts_sig" ]
+      fileMatcherConfigs:
+        - matcherType: basic
+          patterns: [".evts", ".evts_sig"]
       retry:
         limit: 5
       storage:

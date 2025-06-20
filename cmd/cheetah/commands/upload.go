@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.hedera.com/solo-cheetah/internal/config"
 	"golang.hedera.com/solo-cheetah/internal/core"
+	"golang.hedera.com/solo-cheetah/internal/processor"
+	"golang.hedera.com/solo-cheetah/internal/scanner"
 	"golang.hedera.com/solo-cheetah/internal/storage"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
 	"os"
@@ -51,11 +53,25 @@ func runUpload(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, pipeline := range config.Get().Pipelines {
 		if !pipeline.Enabled {
+			logx.As().Warn().Str("pipeline", pipeline.Name).Msg("Pipeline disabled")
 			continue
 		}
 
+		logx.As().Info().
+			Str("pipeline", pipeline.Name).
+			Int("total_processors", pipeline.Processor.MaxProcessors).
+			Str("description", pipeline.Description).
+			Str("scanner_directory", pipeline.Scanner.Directory).
+			Str("scanner_pattern", pipeline.Scanner.Pattern).
+			Str("scanner_interval", pipeline.Scanner.Interval).
+			Int("scanner_batch_size", pipeline.Scanner.BatchSize).
+			Int("max_processors", pipeline.Processor.MaxProcessors).
+			Str("flush_delay", pipeline.Processor.FlushDelay).
+			Str("matchers", fmt.Sprintf("%s", pipeline.Processor.FileMatcherConfigs)).
+			Msg("Starting pipeline")
+
 		// Create scanner
-		scanner, err := core.NewScanner(fmt.Sprintf("scanner-%s", pipeline.Name),
+		sc, err := scanner.NewScanner(fmt.Sprintf("scanner-%s", pipeline.Name),
 			pipeline.Scanner.Directory, pipeline.Scanner.Pattern, pipeline.Scanner.BatchSize)
 		if err != nil {
 			logx.As().Error().Err(err).Msg("Failed to create scanner")
@@ -63,7 +79,7 @@ func runUpload(ctx context.Context) {
 		}
 
 		// Prepare processors
-		processors, err := prepareProcessors(pipeline)
+		pc, err := prepareProcessors(pipeline)
 		if err != nil {
 			logx.As().Error().Err(err).Str("pipeline", pipeline.Name).Msg("Failed to prepare processor dependencies")
 			return
@@ -79,7 +95,7 @@ func runUpload(ctx context.Context) {
 				logx.As().Error().Stack().Err(err).Msg("Stopping all pipelines because of error ")
 				cancelFunc() // cancel all pipelines if one fails
 			}
-		}(pipeline, scanner, processors)
+		}(pipeline, sc, pc)
 	}
 
 	// wait for all pipelines to finish
@@ -96,7 +112,7 @@ func runUpload(ctx context.Context) {
 
 	select {
 	case <-sigCh:
-		logx.As().Debug().Msg("Received exit signal, stopping pipelines...")
+		logx.As().Trace().Msg("Received exit signal, stopping pipelines...")
 		cancelFunc()
 	case <-ctx.Done():
 	}
@@ -112,7 +128,7 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 
 		if pc.Processor.Storage.LocalDir.Enabled {
 			localDir, err := storage.NewLocalDir(fmt.Sprintf("dir-%d-%s", i, pc.Name),
-				*pc.Processor.Storage.LocalDir, *pc.Processor.Retry, pc.Scanner.Directory, pc.Processor.FileExtensions)
+				*pc.Processor.Storage.LocalDir, *pc.Processor.Retry, pc.Scanner.Directory)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create LocalDir storage: %w", err)
 			}
@@ -122,7 +138,7 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 
 		if pc.Processor.Storage.S3.Enabled {
 			s3, err := storage.NewS3(fmt.Sprintf("s3-%d-%s", i, pc.Name),
-				*pc.Processor.Storage.S3, *pc.Processor.Retry, pc.Scanner.Directory, pc.Processor.FileExtensions)
+				*pc.Processor.Storage.S3, *pc.Processor.Retry, pc.Scanner.Directory)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create S3 storage: %w", err)
 			}
@@ -132,7 +148,7 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 
 		if pc.Processor.Storage.GCS.Enabled {
 			gcs, err := storage.NewGCSWithS3(fmt.Sprintf("gcs-%d-%s", i, pc.Name),
-				*pc.Processor.Storage.GCS, *pc.Processor.Retry, pc.Scanner.Directory, pc.Processor.FileExtensions)
+				*pc.Processor.Storage.GCS, *pc.Processor.Retry, pc.Scanner.Directory)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create GCS storage: %w", err)
 			}
@@ -140,7 +156,7 @@ func prepareProcessors(pc *config.PipelineConfig) ([]core.Processor, error) {
 			storages = append(storages, gcs)
 		}
 
-		p, err := core.NewProcessor(fmt.Sprintf("processor-%d-%s", i, pc.Name), storages, pc.Processor)
+		p, err := processor.NewProcessor(fmt.Sprintf("processor-%d-%s", i, pc.Name), storages, pc.Processor)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create processor: %w", err)
 		}
@@ -177,27 +193,27 @@ func startPipeline(ctx context.Context, c *config.PipelineConfig,
 			items := scanner.Scan(ctx, ech)
 
 			// Process files
-			for _, processor := range processors {
+			for _, pc := range processors {
 				pwg.Add(1) // Add a wait group for each processor
 				go func(p core.Processor) {
 					defer pwg.Done() // Ensure the wait group is done when the processor finishes
 					p.Process(ctx, items, ech)
-					logx.As().Debug().
+					logx.As().Trace().
 						Str("pipeline", c.Name).
-						Str("processor", processor.Info()).
+						Str("processor", p.Info()).
 						Msg("Processor completed")
-				}(processor)
+				}(pc)
 			}
 
 			// Wait for all processors to finish
 			go func() {
-				logx.As().Debug().
+				logx.As().Trace().
 					Str("pipeline", c.Name).
 					Msg("Waiting for processors to finish...")
 
 				pwg.Wait() // Wait for all processors to complete
 
-				logx.As().Debug().
+				logx.As().Trace().
 					Str("pipeline", c.Name).
 					Msg("All processors finished")
 
@@ -219,12 +235,12 @@ func startPipeline(ctx context.Context, c *config.PipelineConfig,
 			}
 
 			if flagPoll == false {
-				logx.As().Debug().Str("pipeline", c.Name).Msg("Polling is disabled, exiting pipeline...")
+				logx.As().Trace().Str("pipeline", c.Name).Msg("Polling is disabled, exiting pipeline...")
 				return nil
 			}
 
 			// delay
-			logx.As().Debug().
+			logx.As().Trace().
 				Str("pipeline", c.Name).
 				Dur("interval", delay).Msg("Sleeping before next scan...")
 			time.Sleep(delay)

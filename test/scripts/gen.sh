@@ -6,7 +6,7 @@
 # Directory to store files
 TARGET_DIR=$1
 MARKER_EXT=${2:-rcd_sig}
-FILE_EXT=${3:-rcd}
+FILE_EXT=${3:-rcd.gz}
 TOTAL=${4:-10}
 DELAY=${5:-0.1}
 BATCHES=${6:-10}

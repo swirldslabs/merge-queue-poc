@@ -31,8 +31,9 @@ type Scanner interface {
 // Notes:
 //   - This struct is used to communicate the details of a matched file during scan.
 type ScannerResult struct {
-	Path string
-	Info os.FileInfo
+	Path    string
+	TraceId string // Unique identifier for tracing the file processing
+	Info    os.FileInfo
 }
 
 // Processor defines the interface for a file processing pipeline.
@@ -63,9 +64,10 @@ type Processor interface {
 //   - The Result map contains the outcomes of the storage operations for the file across different storage handlers.
 //   - This struct is used to communicate the overall outcome of the processing operation for a single file.
 type ProcessorResult struct {
-	Error  error
-	Path   string
-	Result map[string]*StorageResult
+	Error   error
+	Path    string
+	TraceId string
+	Result  map[string]*StorageResult
 }
 
 // Storage defines the interface for a storage handler that manages file storage operations.
@@ -81,14 +83,14 @@ type ProcessorResult struct {
 type Storage interface {
 	Info() string
 	Type() string
-	Put(ctx context.Context, item ScannerResult, stored chan<- StorageResult)
+	Put(ctx context.Context, item ScannerResult, candidates []string, stored chan<- StorageResult)
 }
 
 // StorageResult represents the result of a file storage operation.
 //
 // Fields:
 //   - Error: An error encountered during the storage operation, if any.
-//   - Src: The source directory of the file.
+//   - MarkerPath: The source directory of the file.
 //   - Dest: The destination directory of the file.
 //   - Type: The type of storage (e.g., "S3", "Local").
 //   - Handler: The identifier of the uploader used for the storage operation.
@@ -97,11 +99,11 @@ type Storage interface {
 //   - If the storage operation is successful, the Error field will be nil.
 //   - This struct is used to communicate the outcome of a storage operation.
 type StorageResult struct {
-	Error   error
-	Src     string
-	Dest    []string
-	Type    string
-	Handler string
+	Error         error
+	MarkerPath    string
+	UploadResults []*UploadInfo
+	Type          string
+	Handler       string
 }
 
 // UploadInfo represents metadata about a file upload operation.

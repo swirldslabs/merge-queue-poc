@@ -52,11 +52,10 @@ func TestS3Handler_EnsureBucketExists(t *testing.T) {
 
 	h := &s3Handler{
 		handler: &handler{
-			id:             "s3-handler",
-			storageType:    TypeS3,
-			fileExtensions: []string{".txt", ".log"},
-			pathPrefix:     bucketConfig.Prefix,
-			rootDir:        tempDir,
+			id:          "s3-handler",
+			storageType: TypeS3,
+			pathPrefix:  bucketConfig.Prefix,
+			rootDir:     tempDir,
 		},
 		client:       mockClient,
 		bucketConfig: bucketConfig,
@@ -98,11 +97,10 @@ func TestS3Handler_SyncWithBucket(t *testing.T) {
 	bucketConfig := config.BucketConfig{Bucket: bucketName}
 	h := &s3Handler{
 		handler: &handler{
-			id:             "s3-handler",
-			storageType:    TypeS3,
-			fileExtensions: []string{".txt", ".log"},
-			pathPrefix:     bucketConfig.Prefix,
-			rootDir:        tempDir,
+			id:          "s3-handler",
+			storageType: TypeS3,
+			pathPrefix:  bucketConfig.Prefix,
+			rootDir:     tempDir,
 		},
 		client:       mockClient,
 		bucketConfig: bucketConfig,
@@ -170,11 +168,10 @@ func TestChecksumRecalculation(t *testing.T) {
 	bucketConfig := config.BucketConfig{Bucket: bucketName}
 	h := &s3Handler{
 		handler: &handler{
-			id:             "s3-handler",
-			storageType:    TypeS3,
-			fileExtensions: []string{".txt", ".log"},
-			pathPrefix:     bucketConfig.Prefix,
-			rootDir:        tempDir,
+			id:          "s3-handler",
+			storageType: TypeS3,
+			pathPrefix:  bucketConfig.Prefix,
+			rootDir:     tempDir,
 		},
 		client:       mockClient,
 		bucketConfig: bucketConfig,

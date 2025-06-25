@@ -231,7 +231,29 @@ To load the application into a local Kubernetes cluster, you can use the command
 task build:image
 SOLO_CLUSTER_NAME=solo task load
 ```
----
+## Use a local docker proxy
+It is recommended to use a local Docker registry proxy to speed up image pulls and cache images.
+
+- Start the proxy server (Note: this doesn't yet work for gcr.io)
+```sh
+export DOCKER_REGISTRY_PROXY=localhost:3128
+export DOCKER_MIRROR_CACHE=$HOME/docker_mirror_cache # change this to your preferred cache location
+export DOCKER_MIRROR_CERTS=$HOME/docker_mirror_certs # change this to your preferred certs location
+mkdir -p $DOCKER_MIRROR_CACHE $DOCKER_MIRROR_CERTS
+docker run --rm --name docker_registry_proxy -it \
+       --net kind --hostname docker-registry-proxy \
+       -p 0.0.0.0:3128:3128 -e ENABLE_MANIFEST_CACHE=true \
+       -e REGISTRIES="docker.io registry.k8s.io quay.io ghcr.io" \
+       -v $DOCKER_MIRROR_CACHE:/docker_mirror_cache \
+       -v $DOCKER_MIRROR_CERTS:/ca \
+       rpardini/docker-registry-proxy:0.6.5
+```
+- Create your cluster if not already created e.g. `solo-e2e`
+- Set docker proxy for your kind cluster
+```sh
+export SOLO_CLUSTER_NAME=solo-e2e # change this to your cluster name
+./test/scripts/setup-docker-proxy.sh "${SOLO_CLUSTER_NAME}" 
+```
 
 ## Taskfile Commands
 
@@ -247,5 +269,3 @@ SOLO_CLUSTER_NAME=solo task load
 ## License
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
-```
-This version matches the latest data model and config structure. Adjust paths and environment variables as needed for your deployment.

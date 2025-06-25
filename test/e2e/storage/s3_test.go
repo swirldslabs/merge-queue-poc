@@ -47,8 +47,8 @@ func (h *s3TestHandler) initClient(t *testing.T, bucketConfig *config.BucketConf
 
 func (h *s3TestHandler) verifyFile(t *testing.T, filePath string, cleanUp bool) {
 	// Verify the uploaded file exists in the bucket
-	_, name, _ := fsx.SplitFilePath(filePath)
-	objectName := fsx.CombineFilePath(h.bucketConfig.Prefix, name, ".txt")
+	_, name, ext := fsx.SplitFilePath(filePath)
+	objectName := fsx.CombineFilePath(h.bucketConfig.Prefix, name, ext)
 	attr, err := h.client.StatObject(context.Background(), h.bucketConfig.Bucket, objectName, minio.StatObjectOptions{})
 	require.NoError(t, err)
 
@@ -149,10 +149,10 @@ func TestS3_Put(t *testing.T) {
 	handler, err := storage.NewS3("s3-1", *h.bucketConfig, *h.retryConfig, filesDir)
 	require.NoError(t, err)
 
-	file1 := h.createMockFile(t, path.Join(h.filesDir, "marker.mf"))
+	file1 := h.createMockFile(t, path.Join(h.filesDir, "file1.mf"))
 	file2 := h.createMockFile(t, path.Join(h.filesDir, "file1.txt"))
 	files := []string{file1, file2}
-	marker := core.ScannerResult{Path: path.Join(h.filesDir, "marker.mf")}
+	marker := core.ScannerResult{Path: path.Join(h.filesDir, "file1.mf")}
 	stored := h.upload(t, handler, marker, files)
 
 	// Verify the result
@@ -184,10 +184,10 @@ func TestGCS_Put(t *testing.T) {
 	handler, err := storage.NewGCSWithS3("gcs-1", *h.bucketConfig, *h.retryConfig, filesDir)
 	require.NoError(t, err)
 
-	file1 := h.createMockFile(t, path.Join(h.filesDir, "marker.mf"))
+	file1 := h.createMockFile(t, path.Join(h.filesDir, "file1.mf"))
 	file2 := h.createMockFile(t, path.Join(h.filesDir, "file1.txt"))
 	files := []string{file1, file2}
-	marker := core.ScannerResult{Path: path.Join(h.filesDir, "marker.mf")}
+	marker := core.ScannerResult{Path: path.Join(h.filesDir, "file1.mf")}
 	stored := h.upload(t, handler, marker, files)
 
 	// Verify the result

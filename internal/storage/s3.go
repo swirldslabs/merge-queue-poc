@@ -71,7 +71,7 @@ func (s *s3Handler) ensureBucketExists(ctx context.Context) error {
 
 	exists, err := s.client.BucketExists(ctx, s.bucketConfig.Bucket)
 	if err != nil {
-		return fmt.Errorf("failed to check if bucket exists: %w", err)
+		return err
 	}
 
 	if !exists {
@@ -258,9 +258,10 @@ func newS3Handler(id string, storageType string, bucketConfig config.BucketConfi
 	err = nil
 	ctx := context.Background()
 	for i := 0; i < 300; i++ {
-		err = s3.ensureBucketExists(context.Background())
+		err = s3.ensureBucketExists(ctx)
 		if err == nil {
-			logx.As().Info().Str("storage_type", storageType).
+			logx.As().Info().
+				Str("storage_type", storageType).
 				Int("attempt", i).
 				Int("max_attempts", 300).
 				Str("bucket", bucketConfig.Bucket).
@@ -276,7 +277,9 @@ func newS3Handler(id string, storageType string, bucketConfig config.BucketConfi
 			Str("bucket", bucketConfig.Bucket).
 			Str("storage_type", storageType).
 			Str("id", s3.Info()).
+			Err(err).
 			Msg("Bucket doesn't exist, trying in 1s...")
+
 		core.ApplyDelay(ctx, time.Second)
 	}
 

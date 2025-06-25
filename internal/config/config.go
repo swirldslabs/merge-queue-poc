@@ -210,27 +210,30 @@ func initializeNestedStructs() {
 // overridePipelineConfigWithEnvVars overrides pipeline configuration values with environment variables.
 // We need this because currently viper won't override the array configuration elements using the env vars.
 func overridePipelineConfigWithEnvVars() error {
-	for _, pipeline := range config.Pipelines {
-		// set boolean fields using well-defined env vars
-		booleanFields := map[string]*bool{
-			"S3_ENABLED":  &pipeline.Processor.Storage.S3.Enabled,
-			"S3_USE_SSL":  &pipeline.Processor.Storage.S3.UseSSL,
-			"GCS_ENABLED": &pipeline.Processor.Storage.GCS.Enabled,
-			"GCS_USE_SSL": &pipeline.Processor.Storage.GCS.UseSSL,
-		}
-		for envVar, field := range booleanFields {
-			if envValue := os.Getenv(envVar); envValue != "" {
-				envValueBool, err := strconv.ParseBool(envValue)
-				if err != nil {
-					return fmt.Errorf("invalid value for %s: %s", envVar, envValue)
-				} else {
-					*field = envValueBool
+	if config.Pipelines != nil && len(config.Pipelines) > 0 {
+		for _, pipeline := range config.Pipelines {
+
+			// set boolean fields using well-defined env vars
+			booleanFields := map[string]*bool{
+				"S3_ENABLED":  &pipeline.Processor.Storage.S3.Enabled,
+				"S3_USE_SSL":  &pipeline.Processor.Storage.S3.UseSSL,
+				"GCS_ENABLED": &pipeline.Processor.Storage.GCS.Enabled,
+				"GCS_USE_SSL": &pipeline.Processor.Storage.GCS.UseSSL,
+			}
+			for envVar, field := range booleanFields {
+				if envValue := os.Getenv(envVar); envValue != "" {
+					envValueBool, err := strconv.ParseBool(envValue)
+					if err != nil {
+						return fmt.Errorf("invalid value for %s: %s", envVar, envValue)
+					} else {
+						*field = envValueBool
+					}
 				}
 			}
-		}
 
-		overrideBucketConfigWithEnv(pipeline.Processor.Storage.S3)
-		overrideBucketConfigWithEnv(pipeline.Processor.Storage.GCS)
+			overrideBucketConfigWithEnv(pipeline.Processor.Storage.S3)
+			overrideBucketConfigWithEnv(pipeline.Processor.Storage.GCS)
+		}
 	}
 
 	return nil
@@ -248,6 +251,17 @@ func overrideBucketConfigWithEnv(bucket *BucketConfig) {
 	bucket.Endpoint = overrideWithEnv(bucket.Endpoint)
 	bucket.AccessKey = overrideWithEnv(bucket.AccessKey)
 	bucket.SecretKey = overrideWithEnv(bucket.SecretKey)
+
+	// convert http or https in Endpoint to use_ssl boolean
+	if bucket.Endpoint != "" {
+		if strings.HasPrefix(bucket.Endpoint, "https://") {
+			bucket.Endpoint = strings.TrimPrefix(bucket.Endpoint, "https://")
+			bucket.UseSSL = true
+		} else if strings.HasPrefix(bucket.Endpoint, "http://") {
+			bucket.Endpoint = strings.TrimPrefix(bucket.Endpoint, "http://")
+			bucket.UseSSL = false
+		}
+	}
 }
 
 // overridePipelineConfigWithEnvVars overrides configuration values with environment variables.

@@ -1,5 +1,6 @@
 #!/bin/bash
 SOLO_CLUSTER_NAME="${SOLO_CLUSTER_NAME:-solo-e2e}"
+MIRROR_NODE_VERSION="${MIRROR_NODE_VERSION:-0.131.0}"
 
 images=(
   "ghcr.io/hashgraph/solo-containers/ubi8-init-java21:0.38.0"
@@ -11,6 +12,14 @@ images=(
   "ghcr.io/hiero-ledger/hiero-mirror-node-explorer/hiero-explorer:24.15.0"
   "ghcr.io/hiero-ledger/hiero-json-rpc-relay:0.67.0"
   "ghcr.io/hashgraph/solo-cheetah/cheetah:local"
+  "quay.io/jcmoraisjr/haproxy-ingress:v0.14.5"
+  "docker.io/bitnami/redis:7.4.2-debian-12-r6"
+  "docker.io/bitnami/redis-sentinel:7.4.2-debian-12-r6"
+  "gcr.io/mirrornode/hedera-mirror-grpc:${MIRROR_NODE_VERSION}"
+  "gcr.io/mirrornode/hedera-mirror-importer:${MIRROR_NODE_VERSION}"
+  "gcr.io/mirrornode/hedera-mirror-monitor:${MIRROR_NODE_VERSION}"
+  "gcr.io/mirrornode/hedera-mirror-rest:${MIRROR_NODE_VERSION}"
+  "gcr.io/mirrornode/hedera-mirror-rest-java:${MIRROR_NODE_VERSION}"
 )
 
 docker tag solo-cheetah ghcr.io/hashgraph/solo-cheetah/cheetah:local

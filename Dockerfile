@@ -1,18 +1,15 @@
-# Step 1: Fetch CA certificates
-# --------------------------------------------------------
-# Use the official Go image for building the application
-FROM ubuntu:noble-20250415.1 AS ca-base
-RUN apt-get update && apt-get install -y ca-certificates
-
-
-# Step 2: Build the application
-# --------------------------------------------------------
-# Use the official Go image for building the application
-FROM ubuntu:noble-20250415.1 AS base
-
 ARG SOURCE_DATE_EPOCH=0
 
-COPY --from=ca-base /etc/ssl/certs/ /etc/ssl/certs/
+# Step 1: Build the application
+# --------------------------------------------------------
+# Use the official Go image for building the application
+FROM debian:bookworm-20250811-slim AS base
+ARG SOURCE_DATE_EPOCH
+# Install basic OS utilities
+RUN --mount=type=bind,source=./repro-sources-list.sh,target=/usr/local/bin/repro-sources-list.sh \
+    repro-sources-list.sh && \
+    apt-get update && \
+    apt-get install --yes --no-install-recommends ca-certificates tzdata sudo
 
 RUN mkdir -p /app/dl && \
     mkdir -p /app/config && \
@@ -59,6 +56,15 @@ RUN useradd \
 RUN chown -R cheetah:cheetah /app/config /app/logs /app/stats /app/data && \
     chmod -R 755 /app/config /app/logs /app/stats /app/data
 
+# Remove Unneeded Utilities
+RUN --mount=type=bind,source=./repro-sources-list.sh,target=/usr/local/bin/repro-sources-list.sh \
+    repro-sources-list.sh && \
+    apt-get autoremove --yes && \
+    apt-get autoclean --yes && \
+    apt-get clean all --yes && \
+    rm -rf /var/log/ && \
+    rm -rf /var/cache/
+
 
 ########################################
 ####    Deterministic Build Hack    ####
@@ -72,7 +78,7 @@ RUN find $( ls / | grep -E -v "^(dev|mnt|proc|sys)$" ) \
   -newermt "@${SOURCE_DATE_EPOCH}" -writable -xdev \
   | xargs touch --date="@${SOURCE_DATE_EPOCH}" --no-dereference
 
-# Step 3: Create a minimal image
+# Step 2: Create a minimal image
 # --------------------------------------------------------
 # Use a minimal base image for the final container
 FROM scratch

@@ -72,7 +72,7 @@ tasks:
     deps:
       - task: "hash"
     cmds:
-      - "docker build -t solo-cheetah ."
+      - "docker build --build-arg SOURCE_DATE_EPOCH=$(date +%s)  -t solo-cheetah ."
 
   run:minio-local:
     cmds:

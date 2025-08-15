@@ -27,7 +27,7 @@ for b in $(seq 1 $BATCHES); do
     marker="${n}.${MARKER_EXT}"
     file="${n}.${FILE_EXT}"
     echo "Generating ${file} (${FILE_SIZE_KB}KB)..."
-    dd if=/dev/urandom of="${TARGET_DIR}/${file}" bs=1K count=${FILE_SIZE_KB} status=none
+    dd if=/dev/zero of="${TARGET_DIR}/${file}" bs=1K count=${FILE_SIZE_KB} status=none
     touch "${TARGET_DIR}/${marker}"
   done
   echo "Generated $TOTAL files [batch: $i/$BATCHES]. Sleeping for ${DELAY}s..."

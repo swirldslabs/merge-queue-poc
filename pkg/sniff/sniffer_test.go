@@ -151,7 +151,7 @@ func TestSniffer_WriteStatsToFile(t *testing.T) {
 		cancel: cancel,
 	}
 
-	memStats := &MemStats{AllocMiB: 10, TotalAllocMiB: 20, SysMiB: 30, NumGC: 5}
+	memStats := &MemStats{AllocMiB: 10, SysMiB: 30, NumGC: 5}
 	cpuStats := &CPUStats{NumGoroutines: 10, NumCPU: 4, NumCgoCalls: 100}
 
 	// Write stats to file

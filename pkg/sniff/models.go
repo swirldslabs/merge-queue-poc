@@ -1,10 +1,18 @@
 package sniff
 
 type MemStats struct {
-	AllocMiB      uint64 `json:"alloc_mib"`
-	TotalAllocMiB uint64 `json:"total_alloc_mib"`
-	SysMiB        uint64 `json:"sys_mib"`
-	NumGC         uint32 `json:"num_gc"`
+	AllocMiB        uint64 `json:"alloc_mib"`
+	HeapAllocMiB    uint64 `json:"heap_alloc_mib"`
+	HeapSysMiB      uint64 `json:"heap_sys_mib"`
+	HeapIdleMiB     uint64 `json:"heap_idle_mib"`
+	HeapInuseMiB    uint64 `json:"heap_in_use_mib"`
+	HeapReleasedMiB uint64 `json:"heap_released_mib"`
+	HeapObjects     uint64 `json:"heap_objects"`
+	Mallocs         uint64 `json:"mallocs"`
+	Frees           uint64 `json:"frees"`
+	LiveObjects     uint64 `json:"live_objects"`
+	SysMiB          uint64 `json:"sys_mib"`
+	NumGC           uint32 `json:"num_gc"`
 }
 
 type CPUStats struct {

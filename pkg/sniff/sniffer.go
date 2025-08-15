@@ -198,7 +198,15 @@ func (s *Sniffer) startCapturingStats() error {
 
 				logx.As().Info().
 					Uint64("Alloc(MiB)", memStats.AllocMiB).
-					Uint64("TotalAlloc(MiB)", memStats.TotalAllocMiB).
+					Uint64("HeapAlloc(MiB)", memStats.HeapAllocMiB).
+					Uint64("HeapSys(MiB)", memStats.HeapSysMiB).
+					Uint64("HeapIdle(MiB)", memStats.HeapIdleMiB).
+					Uint64("HeapInuse(MiB)", memStats.HeapInuseMiB).
+					Uint64("HeapReleased(MiB)", memStats.HeapReleasedMiB).
+					Uint64("HeapObjects", memStats.HeapObjects).
+					Uint64("Mallocs", memStats.Mallocs).
+					Uint64("Frees", memStats.Frees).
+					Uint64("LiveObjects", memStats.LiveObjects).
 					Uint64("Sys(MiB)", memStats.SysMiB).
 					Uint32("NumGC", memStats.NumGC).
 					Int("NumGoroutines", cpuStats.NumGoroutines).
@@ -262,10 +270,18 @@ func (s *Sniffer) collectStats() (*MemStats, *CPUStats) {
 	runtime.ReadMemStats(&m)
 
 	memStats := &MemStats{
-		AllocMiB:      m.Alloc / 1024 / 1024,
-		TotalAllocMiB: m.TotalAlloc / 1024 / 1024,
-		SysMiB:        m.Sys / 1024 / 1024,
-		NumGC:         m.NumGC,
+		AllocMiB:        m.Alloc / 1024 / 1024,
+		HeapAllocMiB:    m.HeapAlloc / 1024 / 1024,
+		HeapSysMiB:      m.HeapSys / 1024 / 1024,
+		HeapIdleMiB:     m.HeapIdle / 1024 / 1024,
+		HeapInuseMiB:    m.HeapInuse / 1024 / 1024,
+		HeapReleasedMiB: m.HeapReleased / 1024 / 1024,
+		HeapObjects:     m.HeapObjects,
+		Mallocs:         m.Mallocs,
+		Frees:           m.Frees,
+		LiveObjects:     m.Mallocs - m.Frees,
+		SysMiB:          m.Sys / 1024 / 1024,
+		NumGC:           m.NumGC,
 	}
 
 	cpuStats := &CPUStats{

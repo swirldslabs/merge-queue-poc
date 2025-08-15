@@ -99,15 +99,17 @@ func (s *s3Handler) ensureBucketExists(ctx context.Context) error {
 
 // syncWithBucket uploads a file to the S3 bucket. It skips the upload if the file already exists with the same checksum.
 func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) (*core.UploadInfo, error) {
-	logx.As().Trace().
+	logx.As().Info().
+		Str("id", s.Info()).
 		Str("src", src).
 		Str("object", objectName).
 		Str("bucket", s.bucketConfig.Bucket).
-		Msg("Sync file with the bucket")
+		Msg("Attempting to sync file with the bucket")
 
 	localChecksum, err := fsx.FileMD5(src)
 	if err != nil {
 		logx.As().Error().
+			Str("id", s.Info()).
 			Str("src", src).
 			Err(err).
 			Msg("Failed to calculate local file checksum")
@@ -117,6 +119,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 	attr, err := s.client.StatObject(ctx, s.bucketConfig.Bucket, objectName, minio.StatObjectOptions{})
 	if err == nil && localChecksum == attr.ETag {
 		logx.As().Info().
+			Str("id", s.Info()).
 			Str("src", src).
 			Str("object", objectName).
 			Str("md5", attr.ETag).
@@ -134,6 +137,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 	}
 
 	logx.As().Debug().
+		Str("id", s.Info()).
 		Str("src", src).
 		Str("object", objectName).
 		Str("local_checksum", localChecksum).
@@ -146,6 +150,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 	})
 	if err != nil {
 		logx.As().Error().
+			Str("id", s.Info()).
 			Str("src", src).
 			Str("object", objectName).
 			Str("bucket", s.bucketConfig.Bucket).
@@ -159,6 +164,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 		latestChecksum, err := fsx.FileMD5(src)
 		if err != nil {
 			logx.As().Error().
+				Str("id", s.Info()).
 				Str("src", src).
 				Str("objectName", objectName).
 				Err(err).
@@ -168,6 +174,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 
 		if info.ETag != latestChecksum {
 			logx.As().Warn().
+				Str("id", s.Info()).
 				Str("src", src).
 				Str("objectName", objectName).
 				Str("expected_md5", latestChecksum).
@@ -178,6 +185,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 			localInfo, err := os.Stat(src)
 			if err != nil {
 				logx.As().Error().
+					Str("id", s.Info()).
 					Str("src", src).
 					Str("objectName", objectName).
 					Err(err).
@@ -190,6 +198,7 @@ func (s *s3Handler) syncWithBucket(ctx context.Context, src, objectName string) 
 	}
 
 	logx.As().Info().
+		Str("id", s.Info()).
 		Str("src", src).
 		Str("object", objectName).
 		Str("checksum", info.ETag).

@@ -61,10 +61,11 @@ func TestSniffer_CaptureStats(t *testing.T) {
 	}()
 
 	opts := &ProfilingConfig{
-		Enabled:   true,
-		Directory: tempDir,
-		Interval:  "1s",
-		MaxSize:   1,
+		Enabled:     true,
+		Directory:   tempDir,
+		Interval:    "1s",
+		MaxSize:     1,
+		FileLogging: true,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

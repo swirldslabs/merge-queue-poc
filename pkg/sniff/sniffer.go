@@ -68,8 +68,21 @@ func (s *Sniffer) Start(ctx context.Context) error {
 	}
 
 	if !s.opts.Enabled {
+		logx.As().Debug().Msg("Profiling is disabled")
 		return nil
 	}
+
+	logx.As().Info().
+		Bool("enabled", s.opts.Enabled).
+		Str("host", s.opts.ServerHost).
+		Int("port", s.opts.ServerPort).
+		Str("interval", s.opts.Interval).
+		Bool("enable_pprof", s.opts.EnablePprofServer).
+		Int("pprof_port", s.opts.PprofPort).
+		Bool("enable_file_logging", s.opts.FileLogging).
+		Str("directory", s.opts.Directory).
+		Int64("max_size(MiB)", s.opts.MaxSize).
+		Msg("Starting profiling..")
 
 	// create a new context from the parent context with cancel to manage the lifecycle of the sniffer components
 	// if parent context is canceled, the sniffer will stop all its components
@@ -99,7 +112,7 @@ func (s *Sniffer) Start(ctx context.Context) error {
 
 	go func() {
 		<-ctx.Done() // check if the parent context is canceled
-		logx.As().Trace().Msg("Context canceled, stopping profiling data capture...")
+		logx.As().Debug().Msg("Context canceled, stopping profiling data capture...")
 		s.Stop()
 	}()
 
@@ -184,16 +197,18 @@ func (s *Sniffer) startCapturingStats() error {
 				return
 			default:
 				time.Sleep(interval)
-
-				f, encoder, err = s.rotateFileIfNeeded(f, encoder, statsFile, maxFileSize)
-				if err != nil {
-					logx.As().Error().Err(err).Msg("Failed to handle stats file")
-					continue
-				}
-
 				memStats, cpuStats := s.collectStats()
-				if err := s.writeStatsToFile(encoder, memStats, cpuStats); err != nil {
-					logx.As().Error().Err(err).Msg("Failed to write stats")
+
+				if s.opts.FileLogging {
+					f, encoder, err = s.rotateFileIfNeeded(f, encoder, statsFile, maxFileSize)
+					if err != nil {
+						logx.As().Error().Err(err).Msg("Failed to handle stats file")
+						continue
+					}
+
+					if err = s.writeStatsToFile(encoder, memStats, cpuStats); err != nil {
+						logx.As().Error().Err(err).Msg("Failed to write stats")
+					}
 				}
 
 				logx.As().Info().

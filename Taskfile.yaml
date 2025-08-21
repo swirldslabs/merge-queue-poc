@@ -7,7 +7,7 @@ vars:
   GO_VERSION: 1.24.3
   LDFLAGS: "-w -s"
   TempDir: "/tmp/solo-cheetah"
-  TempDataDir: "/tmp/solo-cheetah/data"
+  TempDataDir: "/tmp/solo-cheetah/data/hgcapp"
   TempBackupDir: "/tmp/solo-cheetah/data/backup"
   TempConfigDir: "/tmp/solo-cheetah/config"
   TempLogsDir: "/tmp/solo-cheetah/logs"
@@ -18,6 +18,12 @@ vars:
   TempBackupEventsStreamsDir: "/tmp/solo-cheetah/data/backup/eventsStreams"
 env:
   SOLO_CLUSTER_NAME: "${SOLO_CLUSTER_NAME:-kind-solo}"
+  S3_ENDPOINT: "${S3_ENDPOINT:-http://minio:9000}"
+  S3_ACCESS_KEY: "${S3_ACCESS_KEY:-solo-cheetah}"
+  S3_SECRET_KEY: "${S3_SECRET_KEY:-changeme}"
+  GCS_ENDPOINT: "${GCS_ENDPOINT:-http://minio:9000}" # For local testing with MinIO
+  GCS_ACCESS_KEY: "${GCS_ACCESS_KEY:-solo-cheetah}"
+  GCS_SECRET_KEY: "${GCS_SECRET_KEY:-changeme}"
 tasks:
   clean:
     cmds:
@@ -88,17 +94,21 @@ tasks:
       - "mkdir -p {{.TempStatsDir}}"
       - "mkdir -p {{.TempRecordStreamsDir}}"
       - "mkdir -p {{.TempEventsStreamsDir}}"
-      - "time docker run -it \
-      -v $(PWD)/test/config:/app/config \
-      -v {{.TempDataDir}}:/app/data \
-      -v {{.TempLogsDir}}:/app/logs \
-      -v {{.TempStatsDir}}:/app/stats \
-      -e S3_ACCESS_KEY=${S3_ACCESS_KEY} \
-      -e S3_SECRET_KEY=${S3_SECRET_KEY} \
-      -e GCS_ACCESS_KEY=${GCS_ACCESS_KEY} \
-      -e GCS_SECRET_KEY=${GCS_SECRET_KEY} \
-      -p 6060:6060 \
-      solo-cheetah upload --config /app/config/.cheetah/cheetah-container.yaml"
+      - |
+        time docker run -it --rm --network=cheetah \
+        --name cheetah \
+        -v $(PWD)/test/config/.cheetah:/app/config \
+        -v {{.TempDataDir}}:/app/data \
+        -v {{.TempLogsDir}}:/app/logs \
+        -v {{.TempStatsDir}}:/app/stats \
+        -e S3_ENDPOINT=${S3_ENDPOINT} \
+        -e GCS_ENDPOINT=${GCS_ENDPOINT} \
+        -e S3_ACCESS_KEY=${S3_ACCESS_KEY} \
+        -e S3_SECRET_KEY=${S3_SECRET_KEY} \
+        -e GCS_ACCESS_KEY=${GCS_ACCESS_KEY} \
+        -e GCS_SECRET_KEY=${GCS_SECRET_KEY} \
+        -p 6060:6060 \
+        solo-cheetah upload --config /app/config/cheetah-container.yaml
 
   run:gen-record-streams: # for testing
     cmds:

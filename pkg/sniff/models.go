@@ -29,16 +29,23 @@ type Stats struct {
 }
 
 type ProfilingConfig struct {
-	Enabled   bool
-	Interval  string
+	// Enabled indicates whether profiling is enabled.
+	Enabled bool
+	// Interval is the profiling interval in a string format, e.g., "1s", "10m".
+	Interval string
+	// ServerHost is the Host for the profiling server.
+	ServerHost string
+	// ServerPort is the port for the profiling server.
+	ServerPort int
+	// EnablePprofServer indicates whether to enable the pprof server.
+	EnablePprofServer bool
+	// PprofPort is the port for the pprof server.
+	PprofPort int
+	// FileLogging indicates whether to enable stats being written to file.
+	FileLogging bool
+	// Directory is the directory where stats files will be stored.
+	// It creates a file stats.json in the specified directory.
 	Directory string
 	// MaxSize is the maximum size (in MB) of a stats file before it is rolled.
-	// ServerHost is the Host for the pprof server.
-	ServerHost string
-	// ServerPort is the port for the pprof server.
-	ServerPort int
-	// MaxSize is the maximum size (in MB) of a stats file before it is rolled.
-	MaxSize           int64
-	EnablePprofServer bool
-	PprofPort         int
+	MaxSize int64
 }

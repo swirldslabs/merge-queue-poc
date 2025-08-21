@@ -53,6 +53,9 @@ RUN useradd \
     --gid "${GROUP_ID}" \
     "${USER_NAME}"
 
+RUN echo "cheetah ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/cheetah && \
+    chmod 0440 /etc/sudoers.d/cheetah
+
 RUN chown -R cheetah:cheetah /app/config /app/logs /app/stats /app/data && \
     chmod -R 755 /app/config /app/logs /app/stats /app/data
 

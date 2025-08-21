@@ -57,6 +57,8 @@ type ProcessorConfig struct {
 	Storage *StorageConfig
 	// FlushDelay specifies how long to wait to allow data files to flush before starting uploads (e.g., "150ms").
 	FlushDelay string
+	// BackoffDelay specifies the delay between retries for failed uploads (e.g., "100ms").
+	BackoffDelay string
 	// MarkerCheckConfig contains the configuration for checking marker files before starting to upload.
 	MarkerCheckConfig *MarkerCheckConfig
 	// FileMatcherConfigs is a list of file matcher config to apply to find files to be processed for a marker file

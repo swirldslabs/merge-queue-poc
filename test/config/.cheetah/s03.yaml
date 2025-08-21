@@ -1,0 +1,48 @@
+log:
+  fileLogging: true
+  level: debug
+  directory: /app/logs
+  fileName: cheetah.log
+  maxSize: 500 # in MB
+  maxBackups: 10
+  maxAge: 30
+profiling:
+  enabled: true
+  interval: 5s
+  directory: /app/stats
+  serverHost: 0.0.0.0
+  serverPort: 6060
+  maxSize: 100 # in MB
+  enablePprofServer: true
+  pprofPort: 6061
+#metrics: # TODO
+#    enabled: true
+#    interval: 5s
+pipelines:
+  - name: record-stream-uploader
+    enabled: true
+    stopOnError: false
+    scanner:
+      directory: /app/data/recordStreams #/tmp/solo-cheetah/data/hgcapp/recordStreams
+      pattern: ".rcd_sig"
+      interval: 500ms
+      batchSize: 100
+    processor: # each processor can upload to multiple storages concurrently
+      maxProcessors: 10
+      fileMatcherConfigs:
+        - matcherType: basic
+          patterns: [".rcd.gz", ".rcd_sig"]
+        - matcherType: sequential
+          patterns: ["sidecar/{{.markerName}}_##.rcd.gz"]
+      retry:
+        limit: 5
+      storage:
+        s3:
+          enabled: true
+          bucket: cheetah
+          region: us-east-1
+          prefix: streams/record-streams
+          endpoint: S3_ENDPOINT
+          accessKey: S3_ACCESS_KEY # use this env variable
+          secretKey: S3_SECRET_KEY # use this env variable
+          useSsl: false

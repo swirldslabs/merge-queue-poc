@@ -8,6 +8,7 @@ import (
 	"golang.hedera.com/solo-cheetah/internal/matcher"
 	"golang.hedera.com/solo-cheetah/pkg/fsx"
 	"golang.hedera.com/solo-cheetah/pkg/logx"
+	"math/rand"
 	"os"
 	"sort"
 	"sync"
@@ -25,6 +26,7 @@ type processor struct {
 	storages           []core.Storage
 	fileMatcherConfigs []config.FileMatcherConfig
 	flushDelay         time.Duration     // delay before uploading files to allow flushing data files
+	backoffDelay       time.Duration     // delay before processing the next marker file after an error
 	markerCheckConfig  markerCheckConfig // configuration for marker file checks
 
 }
@@ -256,11 +258,32 @@ func (p *processor) upload(ctx context.Context, markers <-chan core.ScannerResul
 					pr.Result[resp.Type] = &resp
 				}
 
+				// if there was an error, we apply a random backoff delay before processing the next marker file
+				// this is to avoid overwhelming the storage with requests in case of errors; also we don't want to scan
+				// disk if there are errors (typical errors are if endpoint or bucket doesn't exist).
+				// if there was no error, we set the backoff delay to 0
+				// We don't need very intelligent backoff here, just a simple random delay should suffice
+				backoffDelay := 0 * time.Millisecond // default backoff delay is 0
+				if pr.Error != nil {
+					backoffMultiplier := rand.Intn(9) + 2 // random int between 2 and 10
+					backoffDelay = p.backoffDelay * time.Duration(backoffMultiplier)
+					logx.As().Warn().
+						Str("marker", marker.Path).
+						Str("trace_id", marker.TraceId).
+						Str("processor", p.Info()).
+						Dur("backoff_delay", backoffDelay).
+						Msg("Processor will wait before processing next marker file because of error")
+				}
+
 				// send to the channel
 				select {
 				case processed <- pr:
 				case <-ctx.Done():
 					return
+				}
+
+				if backoffDelay > 0 {
+					core.ApplyDelay(ctx, backoffDelay) // apply a delay before processing the next marker
 				}
 			}
 		}
@@ -305,7 +328,6 @@ func (p *processor) remove(ctx context.Context, stored <-chan core.ProcessorResu
 				if resp.Error != nil {
 					if resp.Error != nil {
 						logx.As().Warn().
-							Err(resp.Error).
 							Str("processor", p.Info()).
 							Str("marker", resp.Path).
 							Str("trace_id", resp.TraceId).
@@ -418,6 +440,14 @@ func NewProcessor(id string, storages []core.Storage, pc *config.ProcessorConfig
 		}
 	}
 
+	backoffDelay := DefaultDelayBeforeUpload
+	if pc.BackoffDelay != "" {
+		backoffDelay, err = time.ParseDuration(pc.BackoffDelay)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse backoffDelay: %w", err)
+		}
+	}
+
 	mc := markerCheckConfig{
 		checkInterval: DefaultMarkerFileCheckInterval,
 		maxAttempts:   DefaultMarkerFileCheckMaxAttempts,
@@ -435,15 +465,17 @@ func NewProcessor(id string, storages []core.Storage, pc *config.ProcessorConfig
 		mc.maxAttempts = pc.MarkerCheckConfig.MaxAttempts
 	}
 
-	return newProcessor(id, storages, pc.FileMatcherConfigs, flushDelay, mc)
+	return newProcessor(id, storages, pc.FileMatcherConfigs, flushDelay, backoffDelay, mc)
 }
 
-func newProcessor(id string, storages []core.Storage, fileMatchersConfigs []config.FileMatcherConfig, flushDelay time.Duration, mc markerCheckConfig) (*processor, error) {
+func newProcessor(id string, storages []core.Storage, fileMatchersConfigs []config.FileMatcherConfig,
+	flushDelay time.Duration, backoffDelay time.Duration, mc markerCheckConfig) (*processor, error) {
 	return &processor{
 		id:                 id,
 		storages:           storages,
 		fileMatcherConfigs: fileMatchersConfigs,
 		flushDelay:         flushDelay,
+		backoffDelay:       backoffDelay,
 		markerCheckConfig:  mc,
 	}, nil
 }

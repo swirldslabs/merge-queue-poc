@@ -85,7 +85,7 @@ func TestProcess_Upload_Success(t *testing.T) {
 			Patterns:    []string{".txt"},
 		},
 	}
-	p, err := newProcessor("test-processor", storages, fileMatcherConfigs, delay, mc)
+	p, err := newProcessor("test-processor", storages, fileMatcherConfigs, delay, delay, mc)
 	require.NoError(t, err)
 
 	stored := p.upload(ctx, items)
@@ -152,7 +152,7 @@ func TestProcess_Upload_Failure(t *testing.T) {
 			Patterns:    []string{".txt"},
 		},
 	}
-	p, err := newProcessor("test-processor", storages, fileMatcherConfigs, delay, mc)
+	p, err := newProcessor("test-processor", storages, fileMatcherConfigs, delay, delay, mc)
 	assert.NoError(t, err)
 	stored := p.upload(ctx, items)
 
@@ -198,7 +198,7 @@ func TestProcess_Remove_Success(t *testing.T) {
 			Patterns:    []string{".txt"},
 		},
 	}
-	p, err := newProcessor("test-processor", nil, fileMatcherConfigs, delay, mc)
+	p, err := newProcessor("test-processor", nil, fileMatcherConfigs, delay, delay, mc)
 	assert.NoError(t, err)
 
 	// Execute the remove function
@@ -248,7 +248,7 @@ func TestProcess_Remove_Failure(t *testing.T) {
 			Patterns:    []string{".txt"},
 		},
 	}
-	p, err := newProcessor("test-processor", nil, fileMatcherConfigs, delay, mc)
+	p, err := newProcessor("test-processor", nil, fileMatcherConfigs, delay, delay, mc)
 	assert.NoError(t, err)
 
 	// Execute the remove function

@@ -76,7 +76,7 @@ tasks:
 
   run:minio-local:
     cmds:
-      - "docker run --rm -p 9000:9000 -p 9001:9001 --name minio -e \"MINIO_ROOT_USER=solo-cheetah\" -e \"MINIO_ROOT_PASSWORD=changeme\" minio/minio server /data --console-address :9001"
+      - "docker run --network=cheetah --rm -p 9000:9000 -p 9001:9001 --name minio -e \"MINIO_ROOT_USER=solo-cheetah\" -e \"MINIO_ROOT_PASSWORD=changeme\" minio/minio server /data --console-address :9001"
 
   run:image:
     cmds:

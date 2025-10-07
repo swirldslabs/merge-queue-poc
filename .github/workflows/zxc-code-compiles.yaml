@@ -12,9 +12,6 @@ on:
         type: string
         required: false
         default: "Code Compiles"
-  push:
-    branches:
-      - trunk-merge/**
 
 defaults:
   run:

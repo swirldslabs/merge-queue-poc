@@ -1,4 +1,4 @@
-# Solo-Cheetah
+# Merge Queue POC using Solo-Cheetah Baseline and Trunk.io
 
 `solo-cheetah` is a Go-based project for efficient file scanning, processing, and storage management.  
 It supports local and remote storage backends and provides a modular architecture for handling various file operations.

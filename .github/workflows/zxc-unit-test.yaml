@@ -12,9 +12,6 @@ on:
         type: string
         required: false
         default: "Unit Test"
-  push:
-    branches:
-      - trunk-merge/**
 
 defaults:
   run:

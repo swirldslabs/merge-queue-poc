@@ -1,5 +1,5 @@
 version: 0.1
 merge:
   required_status:
-    - PR Checks / Build / Standard (pull_request)
-    - PR Checks / Unit Tests / Standard (pull_request)
+    - Build / Standard (pull_request)
+    - Unit Tests / Standard (pull_request)

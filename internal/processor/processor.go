@@ -67,6 +67,8 @@ func (p *processor) Process(ctx context.Context, markers <-chan core.ScannerResu
 	stored := p.upload(ctx, markers)
 	sch := p.remove(ctx, stored)
 
+	//ADDING A COMMENT HERE
+
 	// copy errors to channel
 	for err := range sch {
 		if err != nil {

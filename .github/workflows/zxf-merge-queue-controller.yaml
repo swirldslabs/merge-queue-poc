@@ -16,15 +16,15 @@ concurrency:
 
 jobs:
   build:
-    name: "Merge Queue"
+    name: "Build"
     uses: ./.github/workflows/zxc-code-compiles.yaml
     with:
-      custom-job-label: "Build"
+      custom-job-label: "Merge Queue"
 
   unit-tests:
-    name: "Merge Queue"
+    name: "Unit Tests"
     uses: ./.github/workflows/zxc-unit-test.yaml
     needs:
       - build
     with:
-      custom-job-label: "Unit Tests"
+      custom-job-label: "Merge Queue"

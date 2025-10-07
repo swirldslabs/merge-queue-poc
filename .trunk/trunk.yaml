@@ -1,5 +1,5 @@
 version: 0.1
 merge:
   required_status:
-    - Code Compiles
-    - Unit Test
+    - "Code Compiles"
+    - "Unit Test"

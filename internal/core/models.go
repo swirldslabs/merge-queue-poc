@@ -19,6 +19,7 @@ import (
 //   - The `Scan` method should support context cancellation to allow graceful termination of the scanning process.
 type Scanner interface {
 	Info() string
+	THIS IS BAD
 	Scan(ctx context.Context, ech chan<- error) <-chan ScannerResult
 }
 

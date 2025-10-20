@@ -1,20 +1,10 @@
 package scanner
 
 import (
-	"context"
-	"fmt"
-	"github.com/google/uuid"
-	"golang.hedera.com/solo-cheetah/internal/core"
-	"golang.hedera.com/solo-cheetah/pkg/fsx"
-	"golang.hedera.com/solo-cheetah/pkg/logx"
-	"os"
 	"path/filepath"
 )
 
 type scanner struct {
-	id        string
-	directory string
-	pattern   string
 	walker    *fsx.Walker
 }
 

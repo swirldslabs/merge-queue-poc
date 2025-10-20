@@ -463,6 +463,9 @@ secring.*
 ### Completely Ignore Intellij
 .idea
 
+## Another example file to ignore
+## Here
+
 ### Ignore Generated resources
 .task
 vendor
